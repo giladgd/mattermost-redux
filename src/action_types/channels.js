@@ -1,5 +1,6 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
@@ -64,6 +65,10 @@ export default keyMirror({
     UPDATE_CHANNEL_MEMBER_SUCCESS: null,
     UPDATE_CHANNEL_MEMBER_FAILURE: null,
 
+    UPDATE_CHANNEL_SCHEME_REQUEST: null,
+    UPDATE_CHANNEL_SCHEME_SUCCESS: null,
+    UPDATE_CHANNEL_SCHEME_FAILURE: null,
+
     SELECT_CHANNEL: null,
     LEAVE_CHANNEL: null,
     RECEIVED_CHANNEL: null,
@@ -76,8 +81,15 @@ export default keyMirror({
     RECEIVED_CHANNEL_STATS: null,
     RECEIVED_CHANNEL_PROPS: null,
     RECEIVED_CHANNEL_DELETED: null,
-    RECEIVED_MSG_AND_MENTION_COUNT: null,
     RECEIVED_LAST_VIEWED_AT: null,
     UPDATE_CHANNEL_HEADER: null,
-    UPDATE_CHANNEL_PURPOSE: null
+    UPDATE_CHANNEL_PURPOSE: null,
+
+    INCREMENT_TOTAL_MSG_COUNT: null,
+    INCREMENT_UNREAD_MSG_COUNT: null,
+    DECREMENT_UNREAD_MSG_COUNT: null,
+    INCREMENT_UNREAD_MENTION_COUNT: null,
+    DECREMENT_UNREAD_MENTION_COUNT: null,
+
+    UPDATED_CHANNEL_SCHEME: null,
 });

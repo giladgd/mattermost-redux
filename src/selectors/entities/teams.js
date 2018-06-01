@@ -1,9 +1,11 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {createSelector} from 'reselect';
 
-import {getCurrentUrl} from './general';
+import {DEFAULT_LOCALE} from 'constants/general';
+
+import {getCurrentUrl} from 'selectors/entities/general';
 
 import {createIdsSelector} from 'utils/helpers';
 import {isTeamAdmin} from 'utils/user_utils';
@@ -11,6 +13,14 @@ import {isTeamAdmin} from 'utils/user_utils';
 export function getCurrentTeamId(state) {
     return state.entities.teams.currentTeamId;
 }
+
+export const getTeamByName = createSelector(
+    getTeams,
+    (state, name) => name,
+    (teams, name) => {
+        return Object.values(teams).find((team) => team.name === name);
+    }
+);
 
 export function getTeams(state) {
     return state.entities.teams.teams;
@@ -116,21 +126,6 @@ export function getTeamMember(state, teamId, userId) {
     return null;
 }
 
-export const getJoinableTeams = createSelector(
-    getTeams,
-    getTeamMemberships,
-    (teams, myMembers) => {
-        const openTeams = {};
-        Object.values(teams).forEach((t) => {
-            if (t.allow_open_invite && !myMembers[t.id]) {
-                openTeams[t.id] = t;
-            }
-        });
-
-        return openTeams;
-    }
-);
-
 export const getJoinableTeamIds = createIdsSelector(
     getTeams,
     getTeamMemberships,
@@ -138,8 +133,45 @@ export const getJoinableTeamIds = createIdsSelector(
         return Object.keys(teams).filter((id) => {
             const team = teams[id];
             const member = myMembers[id];
-            return team.allow_open_invite && !member;
+            return team.delete_at === 0 && team.allow_open_invite && !member;
         });
+    }
+);
+
+export const getJoinableTeams = createSelector(
+    getTeams,
+    getJoinableTeamIds,
+    (teams, joinableTeamIds) => {
+        const openTeams = {};
+
+        for (const id of joinableTeamIds) {
+            openTeams[id] = teams[id];
+        }
+
+        return openTeams;
+    }
+);
+
+export const getSortedJoinableTeams = createSelector(
+    getTeams,
+    getJoinableTeamIds,
+    (state, locale) => locale,
+    (teams, joinableTeamIds, locale) => {
+        const openTeams = {};
+
+        for (const id of joinableTeamIds) {
+            openTeams[id] = teams[id];
+        }
+
+        function sortTeams(a, b) {
+            if (a.display_name !== b.display_name) {
+                return a.display_name.toLowerCase().localeCompare(b.display_name.toLowerCase(), locale || DEFAULT_LOCALE, {numeric: true});
+            }
+
+            return a.name.toLowerCase().localeCompare(b.name.toLowerCase(), locale || DEFAULT_LOCALE, {numeric: true});
+        }
+
+        return Object.values(openTeams).sort(sortTeams);
     }
 );
 

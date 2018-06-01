@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 
@@ -24,32 +24,36 @@ describe('Selectors.Posts', () => {
         c: {id: 'c', root_id: 'a', channel_id: '1', create_at: 3, user_id: 'b'},
         d: {id: 'd', root_id: 'b', channel_id: '1', create_at: 4, user_id: 'b'},
         e: {id: 'e', root_id: 'a', channel_id: '1', create_at: 5, user_id: 'b'},
-        f: {id: 'f', channel_id: '2', create_at: 6, user_id: 'b'}
+        f: {id: 'f', channel_id: '2', create_at: 6, user_id: 'b'},
     };
 
     const reaction1 = {user_id: user1.id, emoji_name: '+1'};
     const reactions = {
-        a: {[reaction1.user_id + '-' + reaction1.emoji_name]: reaction1}
+        a: {[reaction1.user_id + '-' + reaction1.emoji_name]: reaction1},
     };
 
     const testState = deepFreezeAndThrowOnMutation({
         entities: {
             users: {
                 currentUserId: user1.id,
-                profiles
+                profiles,
             },
             posts: {
                 posts,
                 postsInChannel: {
                     1: ['e', 'd', 'c', 'b', 'a'],
-                    2: ['f']
+                    2: ['f'],
                 },
-                reactions
+                postsInThread: {
+                    a: ['c', 'e'],
+                    b: ['d'],
+                },
+                reactions,
             },
             preferences: {
-                myPreferences: {}
-            }
-        }
+                myPreferences: {},
+            },
+        },
     });
 
     it('should return the most recent post for each channel', () => {
@@ -77,15 +81,6 @@ describe('Selectors.Posts', () => {
         const result = getPostsForThread(testState, props);
 
         assert.equal(result, getPostsForThread(testState, props));
-    });
-
-    it('should return different result for different props', () => {
-        const getPostsForThread = Selectors.makeGetPostsForThread();
-
-        const result = getPostsForThread(testState, {channelId: '1', rootId: 'a'});
-
-        assert.notEqual(result, getPostsForThread(testState, {channelId: '1', rootId: 'a'}));
-        assert.deepEqual(result, getPostsForThread(testState, {channelId: '1', rootId: 'a'}));
     });
 
     it('should return memoized result for multiple selectors with different props', () => {
@@ -121,7 +116,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post2 = {
@@ -132,67 +127,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: true,
             replyCount: 1,
-            isCommentMention: false
-        };
-
-        const post3 = {
-            ...posts.c,
-            isFirstReply: true,
-            isLastReply: true,
-            previousPostIsComment: false,
-            commentedOnPost: posts.a,
-            consecutivePostByUser: false,
-            replyCount: 2,
-            isCommentMention: false
-        };
-
-        const post4 = {
-            ...posts.d,
-            isFirstReply: true,
-            isLastReply: true,
-            previousPostIsComment: true,
-            commentedOnPost: posts.b,
-            consecutivePostByUser: true,
-            replyCount: 1,
-            isCommentMention: false
-        };
-
-        const post5 = {
-            ...posts.e,
-            isFirstReply: true,
-            isLastReply: true,
-            previousPostIsComment: true,
-            commentedOnPost: posts.a,
-            consecutivePostByUser: true,
-            replyCount: 2,
-            isCommentMention: false
-        };
-
-        const getPostsInChannel = Selectors.makeGetPostsInChannel();
-        assert.deepEqual(getPostsInChannel(testState, '1'), [post5, post4, post3, post2, post1]);
-    });
-
-    it('get posts around post in channel', () => {
-        const post1 = {
-            ...posts.a,
-            isFirstReply: false,
-            isLastReply: false,
-            previousPostIsComment: false,
-            commentedOnPost: undefined,
-            consecutivePostByUser: false,
-            replyCount: 2,
-            isCommentMention: false
-        };
-
-        const post2 = {
-            ...posts.b,
-            isFirstReply: false,
-            isLastReply: false,
-            previousPostIsComment: false,
-            commentedOnPost: undefined,
-            consecutivePostByUser: true,
-            replyCount: 1,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post3 = {
@@ -204,7 +139,6 @@ describe('Selectors.Posts', () => {
             consecutivePostByUser: false,
             replyCount: 2,
             isCommentMention: false,
-            highlight: true
         };
 
         const post4 = {
@@ -215,7 +149,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: posts.b,
             consecutivePostByUser: true,
             replyCount: 1,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post5 = {
@@ -226,7 +160,68 @@ describe('Selectors.Posts', () => {
             commentedOnPost: posts.a,
             consecutivePostByUser: true,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
+        };
+
+        const getPostsInChannel = Selectors.makeGetPostsInChannel();
+        assert.deepEqual(getPostsInChannel(testState, '1', 30), [post5, post4, post3, post2, post1]);
+    });
+
+    it('get posts around post in channel', () => {
+        const post1 = {
+            ...posts.a,
+            isFirstReply: false,
+            isLastReply: false,
+            previousPostIsComment: false,
+            commentedOnPost: undefined,
+            consecutivePostByUser: false,
+            replyCount: 2,
+            isCommentMention: false,
+        };
+
+        const post2 = {
+            ...posts.b,
+            isFirstReply: false,
+            isLastReply: false,
+            previousPostIsComment: false,
+            commentedOnPost: undefined,
+            consecutivePostByUser: true,
+            replyCount: 1,
+            isCommentMention: false,
+        };
+
+        const post3 = {
+            ...posts.c,
+            isFirstReply: true,
+            isLastReply: true,
+            previousPostIsComment: false,
+            commentedOnPost: posts.a,
+            consecutivePostByUser: false,
+            replyCount: 2,
+            isCommentMention: false,
+            highlight: true,
+        };
+
+        const post4 = {
+            ...posts.d,
+            isFirstReply: true,
+            isLastReply: true,
+            previousPostIsComment: true,
+            commentedOnPost: posts.b,
+            consecutivePostByUser: true,
+            replyCount: 1,
+            isCommentMention: false,
+        };
+
+        const post5 = {
+            ...posts.e,
+            isFirstReply: true,
+            isLastReply: true,
+            previousPostIsComment: true,
+            commentedOnPost: posts.a,
+            consecutivePostByUser: true,
+            replyCount: 2,
+            isCommentMention: false,
         };
 
         const getPostsAroundPost = Selectors.makeGetPostsAroundPost();
@@ -246,26 +241,30 @@ describe('Selectors.Posts', () => {
             d: {id: 'd', root_id: 'b', channel_id: '1', create_at: 4, user_id: userAny.id},
             e: {id: 'e', root_id: 'a', channel_id: '1', create_at: 5, user_id: 'b'},
             f: {id: 'f', root_id: 'b', channel_id: '1', create_at: 6, user_id: 'b'},
-            g: {id: 'g', channel_id: '2', create_at: 7, user_id: 'b'}
+            g: {id: 'g', channel_id: '2', create_at: 7, user_id: 'b'},
         };
 
         const testStateAny = deepFreezeAndThrowOnMutation({
             entities: {
                 users: {
                     currentUserId: userAny.id,
-                    profiles: profilesAny
+                    profiles: profilesAny,
                 },
                 posts: {
                     posts: postsAny,
                     postsInChannel: {
                         1: ['f', 'e', 'd', 'c', 'b', 'a'],
-                        2: ['g']
-                    }
+                        2: ['g'],
+                    },
+                    postsInThread: {
+                        a: ['c', 'e'],
+                        b: ['d', 'f'],
+                    },
                 },
                 preferences: {
-                    myPreferences: {}
-                }
-            }
+                    myPreferences: {},
+                },
+            },
         });
 
         const post1 = {
@@ -276,7 +275,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post2 = {
@@ -287,7 +286,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const post3 = {
@@ -298,7 +297,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsAny.a,
             consecutivePostByUser: true,
             replyCount: 2,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const post4 = {
@@ -309,7 +308,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsAny.b,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post5 = {
@@ -320,7 +319,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsAny.a,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const post6 = {
@@ -331,7 +330,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsAny.b,
             consecutivePostByUser: true,
             replyCount: 2,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const getPostsInChannel = Selectors.makeGetPostsInChannel();
@@ -351,26 +350,30 @@ describe('Selectors.Posts', () => {
             d: {id: 'd', root_id: 'b', channel_id: '1', create_at: 4, user_id: userRoot.id},
             e: {id: 'e', root_id: 'a', channel_id: '1', create_at: 5, user_id: 'b'},
             f: {id: 'f', root_id: 'b', channel_id: '1', create_at: 6, user_id: 'b'},
-            g: {id: 'g', channel_id: '2', create_at: 7, user_id: 'b'}
+            g: {id: 'g', channel_id: '2', create_at: 7, user_id: 'b'},
         };
 
         const testStateRoot = deepFreezeAndThrowOnMutation({
             entities: {
                 users: {
                     currentUserId: userRoot.id,
-                    profiles: profilesRoot
+                    profiles: profilesRoot,
                 },
                 posts: {
                     posts: postsRoot,
                     postsInChannel: {
                         1: ['f', 'e', 'd', 'c', 'b', 'a'],
-                        2: ['g']
-                    }
+                        2: ['g'],
+                    },
+                    postsInThread: {
+                        a: ['c', 'e'],
+                        b: ['d', 'f'],
+                    },
                 },
                 preferences: {
-                    myPreferences: {}
-                }
-            }
+                    myPreferences: {},
+                },
+            },
         });
 
         const post1 = {
@@ -381,7 +384,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post2 = {
@@ -392,7 +395,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post3 = {
@@ -403,7 +406,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsRoot.a,
             consecutivePostByUser: true,
             replyCount: 2,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const post4 = {
@@ -414,7 +417,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsRoot.b,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post5 = {
@@ -425,7 +428,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsRoot.a,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const post6 = {
@@ -436,7 +439,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsRoot.b,
             consecutivePostByUser: true,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const getPostsInChannel = Selectors.makeGetPostsInChannel();
@@ -456,26 +459,30 @@ describe('Selectors.Posts', () => {
             d: {id: 'd', root_id: 'b', channel_id: '1', create_at: 4, user_id: userNever.id},
             e: {id: 'e', root_id: 'a', channel_id: '1', create_at: 5, user_id: 'b'},
             f: {id: 'f', root_id: 'b', channel_id: '1', create_at: 6, user_id: 'b'},
-            g: {id: 'g', channel_id: '2', create_at: 7, user_id: 'b'}
+            g: {id: 'g', channel_id: '2', create_at: 7, user_id: 'b'},
         };
 
         const testStateNever = deepFreezeAndThrowOnMutation({
             entities: {
                 users: {
                     currentUserId: userNever.id,
-                    profiles: profilesNever
+                    profiles: profilesNever,
                 },
                 posts: {
                     posts: postsNever,
                     postsInChannel: {
                         1: ['f', 'e', 'd', 'c', 'b', 'a'],
-                        2: ['g']
-                    }
+                        2: ['g'],
+                    },
+                    postsInThread: {
+                        a: ['c', 'e'],
+                        b: ['d', 'f'],
+                    },
                 },
                 preferences: {
-                    myPreferences: {}
-                }
-            }
+                    myPreferences: {},
+                },
+            },
         });
 
         const post1 = {
@@ -486,7 +493,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post2 = {
@@ -497,7 +504,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post3 = {
@@ -508,7 +515,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsNever.a,
             consecutivePostByUser: true,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post4 = {
@@ -519,7 +526,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsNever.b,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post5 = {
@@ -530,7 +537,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsNever.a,
             consecutivePostByUser: false,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post6 = {
@@ -541,7 +548,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: postsNever.b,
             consecutivePostByUser: true,
             replyCount: 2,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const getPostsInChannel = Selectors.makeGetPostsInChannel();
@@ -558,26 +565,29 @@ describe('Selectors.Posts', () => {
             a: {id: 'a', channel_id: '1', create_at: 1, user_id: userAny.id},
             b: {id: 'b', root_id: 'a', channel_id: '1', create_at: 2, user_id: 'b'},
             c: {id: 'c', root_id: 'a', channel_id: '1', create_at: 3, user_id: 'b', type: Posts.POST_TYPES.EPHEMERAL},
-            d: {id: 'd', channel_id: '2', create_at: 4, user_id: 'b'}
+            d: {id: 'd', channel_id: '2', create_at: 4, user_id: 'b'},
         };
 
         const testStateAny = deepFreezeAndThrowOnMutation({
             entities: {
                 users: {
                     currentUserId: userAny.id,
-                    profiles: profilesAny
+                    profiles: profilesAny,
                 },
                 posts: {
                     posts: postsAny,
                     postsInChannel: {
                         1: ['c', 'b', 'a'],
-                        2: ['d']
-                    }
+                        2: ['d'],
+                    },
+                    postsInThread: {
+                        a: ['b', 'c'],
+                    },
                 },
                 preferences: {
-                    myPreferences: {}
-                }
-            }
+                    myPreferences: {},
+                },
+            },
         });
 
         const post1 = {
@@ -589,7 +599,7 @@ describe('Selectors.Posts', () => {
             consecutivePostByUser: false,
             replyCount: 1,
             isCommentMention: false,
-            highlight: true
+            highlight: true,
         };
 
         const post2 = {
@@ -600,7 +610,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 1,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const post3 = {
@@ -611,7 +621,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 1,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const getPostsAroundPost = Selectors.makeGetPostsAroundPost();
@@ -628,26 +638,29 @@ describe('Selectors.Posts', () => {
             a: {id: 'a', channel_id: '1', create_at: 1, user_id: userAny.id},
             b: {id: 'b', root_id: 'a', channel_id: '1', create_at: 2, user_id: 'b', type: Posts.POST_TYPES.EPHEMERAL},
             c: {id: 'c', root_id: 'a', channel_id: '1', create_at: 3, user_id: 'b', state: Posts.POST_DELETED},
-            d: {id: 'd', channel_id: '2', create_at: 4, user_id: 'b'}
+            d: {id: 'd', channel_id: '2', create_at: 4, user_id: 'b'},
         };
 
         const testStateAny = deepFreezeAndThrowOnMutation({
             entities: {
                 users: {
                     currentUserId: userAny.id,
-                    profiles: profilesAny
+                    profiles: profilesAny,
                 },
                 posts: {
                     posts: postsAny,
                     postsInChannel: {
                         1: ['c', 'b', 'a'],
-                        2: ['d']
-                    }
+                        2: ['d'],
+                    },
+                    postsInThread: {
+                        a: ['b', 'c'],
+                    },
                 },
                 preferences: {
-                    myPreferences: {}
-                }
-            }
+                    myPreferences: {},
+                },
+            },
         });
 
         const post1 = {
@@ -658,7 +671,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 0,
-            isCommentMention: false
+            isCommentMention: false,
         };
 
         const post2 = {
@@ -669,7 +682,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 0,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const post3 = {
@@ -680,7 +693,7 @@ describe('Selectors.Posts', () => {
             commentedOnPost: undefined,
             consecutivePostByUser: false,
             replyCount: 0,
-            isCommentMention: true
+            isCommentMention: true,
         };
 
         const getPostsInChannel = Selectors.makeGetPostsInChannel();
@@ -695,11 +708,11 @@ describe('Selectors.Posts', () => {
                         messages: ['test1', 'test2', 'test3'],
                         index: {
                             post: 1,
-                            comment: 2
-                        }
-                    }
-                }
-            }
+                            comment: 2,
+                        },
+                    },
+                },
+            },
         });
 
         const testState2 = deepFreezeAndThrowOnMutation({
@@ -709,11 +722,11 @@ describe('Selectors.Posts', () => {
                         messages: ['test1', 'test2', 'test3'],
                         index: {
                             post: 0,
-                            comment: 0
-                        }
-                    }
-                }
-            }
+                            comment: 0,
+                        },
+                    },
+                },
+            },
         });
 
         const testState3 = deepFreezeAndThrowOnMutation({
@@ -723,11 +736,11 @@ describe('Selectors.Posts', () => {
                         messages: [],
                         index: {
                             post: -1,
-                            comment: -1
-                        }
-                    }
-                }
-            }
+                            comment: -1,
+                        },
+                    },
+                },
+            },
         });
 
         const getHistoryMessagePost = Selectors.makeGetMessageInHistoryItem(Posts.MESSAGE_TYPES.POST);
@@ -747,12 +760,12 @@ describe('Selectors.Posts', () => {
             const state = {
                 entities: {
                     channels: {
-                        currentChannelId
+                        currentChannelId,
                     },
                     posts: {
-                        postsInChannel: {}
-                    }
-                }
+                        postsInChannel: {},
+                    },
+                },
             };
             const expected = [];
 
@@ -765,15 +778,15 @@ describe('Selectors.Posts', () => {
             const state = {
                 entities: {
                     channels: {
-                        currentChannelId
+                        currentChannelId,
                     },
                     posts: {
                         postsInChannel: {
                             [currentChannelId]: ['a', 'b', 'c', 'd'],
-                            abcd: ['e', 'f', 'g']
-                        }
-                    }
-                }
+                            abcd: ['e', 'f', 'g'],
+                        },
+                    },
+                },
             };
             const expected = state.entities.posts.postsInChannel[currentChannelId];
 
@@ -786,12 +799,12 @@ describe('Selectors.Posts', () => {
             let state = {
                 entities: {
                     channels: {
-                        currentChannelId
+                        currentChannelId,
                     },
                     posts: {
-                        postsInChannel: {}
-                    }
-                }
+                        postsInChannel: {},
+                    },
+                },
             };
 
             // No posts, no changes
@@ -809,10 +822,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            abcd: ['e', 'f', 'g']
-                        }
-                    }
-                }
+                            abcd: ['e', 'f', 'g'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -829,10 +842,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            [currentChannelId]: ['a', 'b', 'c', 'd']
-                        }
-                    }
-                }
+                            [currentChannelId]: ['a', 'b', 'c', 'd'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -854,10 +867,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            [currentChannelId]: ['a', 'b', 'c', 'd']
-                        }
-                    }
-                }
+                            [currentChannelId]: ['a', 'b', 'c', 'd'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -874,10 +887,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            [currentChannelId]: ['a', 'b', 'c', 'd', 'h']
-                        }
-                    }
-                }
+                            [currentChannelId]: ['a', 'b', 'c', 'd', 'h'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -897,9 +910,9 @@ describe('Selectors.Posts', () => {
                     ...state.entities,
                     channels: {
                         ...state.entities.channels,
-                        currentChannelId: 'abcd'
-                    }
-                }
+                        currentChannelId: 'abcd',
+                    },
+                },
             };
 
             previous = now;
@@ -926,10 +939,13 @@ describe('Selectors.Posts', () => {
                             1002: {id: '1002', create_at: 1002, root_id: '1001'},
                             1003: {id: '1003', create_at: 1003},
                             1004: {id: '1004', create_at: 1004, root_id: '1001'},
-                            1005: {id: '1005', create_at: 1005}
-                        }
-                    }
-                }
+                            1005: {id: '1005', create_at: 1005},
+                        },
+                        postsInThread: {
+                            1001: ['1002', '1004'],
+                        },
+                    },
+                },
             };
             const expected = ['1005'];
 
@@ -947,10 +963,13 @@ describe('Selectors.Posts', () => {
                             1002: {id: '1002', create_at: 1002, root_id: '1001'},
                             1003: {id: '1003', create_at: 1003},
                             1004: {id: '1004', create_at: 1004, root_id: '1001'},
-                            1005: {id: '1005', create_at: 1005}
-                        }
-                    }
-                }
+                            1005: {id: '1005', create_at: 1005},
+                        },
+                        postsInThread: {
+                            1001: ['1002', '1004'],
+                        },
+                    },
+                },
             };
             const expected = ['1004', '1002', '1001'];
 
@@ -968,10 +987,13 @@ describe('Selectors.Posts', () => {
                             1002: {id: '1002', create_at: 1002, root_id: '1001'},
                             1003: {id: '1003', create_at: 1003},
                             1004: {id: '1004', create_at: 1004, root_id: '1001'},
-                            1005: {id: '1005', create_at: 1005}
-                        }
-                    }
-                }
+                            1005: {id: '1005', create_at: 1005},
+                        },
+                        postsInThread: {
+                            1001: ['1002', '1004'],
+                        },
+                    },
+                },
             };
 
             // One post, no changes
@@ -989,10 +1011,14 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         posts: {
                             ...state.entities.posts.posts,
-                            1006: {id: '1006', create_at: 1006, root_id: '1003'}
-                        }
-                    }
-                }
+                            1006: {id: '1006', create_at: 1006, root_id: '1003'},
+                        },
+                        postsInThread: {
+                            ...state.entities.posts.postsInThread,
+                            1003: ['1006'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -1009,10 +1035,11 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         posts: {
                             ...state.entities.posts.posts,
-                            1005: {id: '1005', create_at: 1005, update_at: 1006}
-                        }
-                    }
-                }
+                            1005: {id: '1005', create_at: 1005, update_at: 1006},
+                        },
+                        postsInThread: state.entities.posts.postsInThread,
+                    },
+                },
             };
 
             previous = now;
@@ -1039,10 +1066,14 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         posts: {
                             ...state.entities.posts.posts,
-                            1007: {id: '1007', create_at: 1007, root_id: '1001'}
-                        }
-                    }
-                }
+                            1007: {id: '1007', create_at: 1007, root_id: '1001'},
+                        },
+                        postsInThread: {
+                            ...state.entities.posts.postsInThread,
+                            1001: [...state.entities.posts.postsInThread['1001'], '1007'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -1068,10 +1099,13 @@ describe('Selectors.Posts', () => {
                             1002: {id: '1002', create_at: 1002, root_id: '1001'},
                             1003: {id: '1003', create_at: 1003},
                             1004: {id: '1004', create_at: 1004, root_id: '1001'},
-                            1005: {id: '1005', create_at: 1005}
-                        }
-                    }
-                }
+                            1005: {id: '1005', create_at: 1005},
+                        },
+                        postsInThread: {
+                            1001: ['1002', '1004'],
+                        },
+                    },
+                },
             };
 
             let now1 = getPostIdsForThread1(state, '1001');
@@ -1102,10 +1136,10 @@ describe('Selectors.Posts', () => {
                 entities: {
                     posts: {
                         postsInChannel: {
-                            1234: ['a']
-                        }
-                    }
-                }
+                            1234: ['a'],
+                        },
+                    },
+                },
             };
 
             assert.deepEqual(getPostIdsAroundPost(state, 'a', '1234'), ['a']);
@@ -1118,10 +1152,10 @@ describe('Selectors.Posts', () => {
                 entities: {
                     posts: {
                         postsInChannel: {
-                            1234: ['a', 'b', 'c', 'd', 'e']
-                        }
-                    }
-                }
+                            1234: ['a', 'b', 'c', 'd', 'e'],
+                        },
+                    },
+                },
             };
 
             assert.deepEqual(getPostIdsAroundPost(state, 'c', '1234'), ['a', 'b', 'c', 'd', 'e']);
@@ -1134,10 +1168,10 @@ describe('Selectors.Posts', () => {
                 entities: {
                     posts: {
                         postsInChannel: {
-                            1234: ['a', 'b', 'c', 'd', 'e']
-                        }
-                    }
-                }
+                            1234: ['a', 'b', 'c', 'd', 'e'],
+                        },
+                    },
+                },
             };
 
             assert.deepEqual(getPostIdsAroundPost(state, 'e', '1234', {postsBeforeCount: 3}), ['b', 'c', 'd', 'e']);
@@ -1150,10 +1184,10 @@ describe('Selectors.Posts', () => {
                 entities: {
                     posts: {
                         postsInChannel: {
-                            1234: ['a', 'b', 'c', 'd', 'e']
-                        }
-                    }
-                }
+                            1234: ['a', 'b', 'c', 'd', 'e'],
+                        },
+                    },
+                },
             };
 
             assert.deepEqual(getPostIdsAroundPost(state, 'a', '1234', {postsAfterCount: 2}), ['a', 'b', 'c']);
@@ -1166,10 +1200,10 @@ describe('Selectors.Posts', () => {
                 entities: {
                     posts: {
                         postsInChannel: {
-                            1234: ['a', 'b', 'c', 'd', 'e', 'f']
-                        }
-                    }
-                }
+                            1234: ['a', 'b', 'c', 'd', 'e', 'f'],
+                        },
+                    },
+                },
             };
 
             assert.deepEqual(getPostIdsAroundPost(state, 'c', '1234', {postsBeforeCount: 1, postsAfterCount: 2}), ['b', 'c', 'd', 'e']);
@@ -1182,10 +1216,10 @@ describe('Selectors.Posts', () => {
                 entities: {
                     posts: {
                         postsInChannel: {
-                            1234: ['a', 'b', 'c', 'd', 'e']
-                        }
-                    }
-                }
+                            1234: ['a', 'b', 'c', 'd', 'e'],
+                        },
+                    },
+                },
             };
 
             // No limit, no changes
@@ -1203,10 +1237,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            abcd: ['g', 'h', 'i', 'j', 'k', 'l']
-                        }
-                    }
-                }
+                            abcd: ['g', 'h', 'i', 'j', 'k', 'l'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -1223,10 +1257,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            1234: [...state.entities.posts.postsInChannel['1234'], 'f']
-                        }
-                    }
-                }
+                            1234: [...state.entities.posts.postsInChannel['1234'], 'f'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -1292,10 +1326,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            abcd: ['y', ...state.entities.posts.postsInChannel.abcd, 'z']
-                        }
-                    }
-                }
+                            abcd: ['y', ...state.entities.posts.postsInChannel.abcd, 'z'],
+                        },
+                    },
+                },
             };
             previous = now;
             now = getPostIdsAroundPost(state, 'j', 'abcd', {postsBeforeCount: 2, postsAfterCount: 1});
@@ -1311,10 +1345,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         postsInChannel: {
                             ...state.entities.posts.postsInChannel,
-                            abcd: ['y', 'g', 'i', 'h', 'j', 'l', 'k', 'z']
-                        }
-                    }
-                }
+                            abcd: ['y', 'g', 'i', 'h', 'j', 'l', 'k', 'z'],
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -1337,10 +1371,10 @@ describe('Selectors.Posts', () => {
                     posts: {
                         postsInChannel: {
                             1234: ['a', 'b', 'c', 'd', 'e', 'f'],
-                            abcd: ['g', 'h', 'i']
-                        }
-                    }
-                }
+                            abcd: ['g', 'h', 'i'],
+                        },
+                    },
+                },
             };
 
             const previous1 = getPostIdsAroundPost1(state, 'c', '1234');
@@ -1366,14 +1400,14 @@ describe('Selectors.Posts', () => {
                 1001: {id: '1001'},
                 1002: {id: '1002'},
                 1003: {id: '1003'},
-                1004: {id: '1004'}
+                1004: {id: '1004'},
             };
             const state = {
                 entities: {
                     posts: {
-                        posts: testPosts
-                    }
-                }
+                        posts: testPosts,
+                    },
+                },
             };
 
             const postIds = ['1000', '1002', '1003'];
@@ -1393,16 +1427,16 @@ describe('Selectors.Posts', () => {
                 1001: {id: '1001'},
                 1002: {id: '1002'},
                 1003: {id: '1003'},
-                1004: {id: '1004'}
+                1004: {id: '1004'},
             };
             let state = {
                 entities: {
                     posts: {
                         posts: {
-                            ...testPosts
-                        }
-                    }
-                }
+                            ...testPosts,
+                        },
+                    },
+                },
             };
             let postIds = ['1000', '1002', '1003'];
 
@@ -1431,10 +1465,10 @@ describe('Selectors.Posts', () => {
                     posts: {
                         ...state.entities.posts,
                         posts: {
-                            ...state.entities.posts.posts
-                        }
-                    }
-                }
+                            ...state.entities.posts.posts,
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -1465,10 +1499,10 @@ describe('Selectors.Posts', () => {
                         ...state.entities.posts,
                         posts: {
                             ...state.entities.posts.posts,
-                            [newPost.id]: newPost
-                        }
-                    }
-                }
+                            [newPost.id]: newPost,
+                        },
+                    },
+                },
             };
 
             previous = now;
@@ -1489,23 +1523,23 @@ describe('Selectors.Posts', () => {
                 1000: {id: '1000', type: 'system_join_channel'},
                 1001: {id: '1001', type: 'system_join_channel'},
                 1002: {id: '1002'},
-                1003: {id: '1003'}
+                1003: {id: '1003'},
             };
             const testPostsInChannel = {
-                channelId: ['1000', '1001', '1002', '1003']
+                channelId: ['1000', '1001', '1002', '1003'],
             };
             const state = {
                 entities: {
                     posts: {
                         posts: testPosts,
-                        postsInChannel: testPostsInChannel
+                        postsInChannel: testPostsInChannel,
                     },
                     preferences: {
                         myPreferences: {
-                            [`${Preferences.CATEGORY_ADVANCED_SETTINGS}--${Preferences.ADVANCED_FILTER_JOIN_LEAVE}`]: {value: 'true'}
-                        }
-                    }
-                }
+                            [`${Preferences.CATEGORY_ADVANCED_SETTINGS}--${Preferences.ADVANCED_FILTER_JOIN_LEAVE}`]: {value: 'true'},
+                        },
+                    },
+                },
             };
 
             const postId = Selectors.getMostRecentPostIdInChannel(state, 'channelId');
@@ -1517,23 +1551,23 @@ describe('Selectors.Posts', () => {
                 1000: {id: '1000', type: 'system_join_channel'},
                 1001: {id: '1001', type: 'system_join_channel'},
                 1002: {id: '1002'},
-                1003: {id: '1003'}
+                1003: {id: '1003'},
             };
             const testPostsInChannel = {
-                channelId: ['1000', '1001', '1002', '1003']
+                channelId: ['1000', '1001', '1002', '1003'],
             };
             const state = {
                 entities: {
                     posts: {
                         posts: testPosts,
-                        postsInChannel: testPostsInChannel
+                        postsInChannel: testPostsInChannel,
                     },
                     preferences: {
                         myPreferences: {
-                            [`${Preferences.CATEGORY_ADVANCED_SETTINGS}--${Preferences.ADVANCED_FILTER_JOIN_LEAVE}`]: {value: 'false'}
-                        }
-                    }
-                }
+                            [`${Preferences.CATEGORY_ADVANCED_SETTINGS}--${Preferences.ADVANCED_FILTER_JOIN_LEAVE}`]: {value: 'false'},
+                        },
+                    },
+                },
             };
 
             const postId = Selectors.getMostRecentPostIdInChannel(state, 'channelId');
@@ -1548,12 +1582,12 @@ describe('Selectors.Posts', () => {
                 entities: {
                     posts: {
                         posts: noPosts,
-                        postsInChannel: []
+                        postsInChannel: [],
                     },
                     channels: {
-                        currentChannelId: 'abcd'
-                    }
-                }
+                        currentChannelId: 'abcd',
+                    },
+                },
             };
             const actual = Selectors.getLatestReplyablePostId(state);
 
@@ -1566,24 +1600,139 @@ describe('Selectors.Posts', () => {
                 b: {id: 'b', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', state: Posts.POST_DELETED},
                 c: {id: 'c', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', type: 'system_join_channel'},
                 d: {id: 'd', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', type: Posts.POST_TYPES.EPHEMERAL},
-                e: {id: 'e', channel_id: 'abcd', create_at: 4, user_id: 'b'}
+                e: {id: 'e', channel_id: 'abcd', create_at: 4, user_id: 'b'},
             };
             const state = {
                 entities: {
                     posts: {
                         posts: postsAny,
                         postsInChannel: {
-                            abcd: ['b', 'c', 'd', 'e']
-                        }
+                            abcd: ['b', 'c', 'd', 'e'],
+                        },
                     },
                     channels: {
-                        currentChannelId: 'abcd'
-                    }
-                }
+                        currentChannelId: 'abcd',
+                    },
+                },
             };
             const actual = Selectors.getLatestReplyablePostId(state);
 
             assert.equal(actual, postsAny.e.id);
         });
+    });
+});
+
+describe('getCurrentUsersLatestPost', () => {
+    const user1 = TestHelper.fakeUserWithId();
+    user1.notify_props = {};
+    const profiles = {};
+    profiles[user1.id] = user1;
+    it('no posts', () => {
+        const noPosts = {};
+        const state = {
+            entities: {
+                users: {
+                    currentUserId: user1.id,
+                    profiles,
+                },
+                posts: {
+                    posts: noPosts,
+                    postsInChannel: [],
+                },
+                channels: {
+                    currentChannelId: 'abcd',
+                },
+            },
+        };
+        const actual = Selectors.getCurrentUsersLatestPost(state);
+
+        assert.equal(actual, null);
+    });
+
+    it('return first post which user can edit', () => {
+        const postsAny = {
+            a: {id: 'a', channel_id: 'a', create_at: 1, user_id: 'a'},
+            b: {id: 'b', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', state: Posts.POST_DELETED},
+            c: {id: 'c', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', type: 'system_join_channel'},
+            d: {id: 'd', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', type: Posts.POST_TYPES.EPHEMERAL},
+            e: {id: 'e', channel_id: 'abcd', create_at: 4, user_id: 'c'},
+            f: {id: 'f', channel_id: 'abcd', create_at: 4, user_id: user1.id},
+        };
+        const state = {
+            entities: {
+                users: {
+                    currentUserId: user1.id,
+                    profiles,
+                },
+                posts: {
+                    posts: postsAny,
+                    postsInChannel: {
+                        abcd: ['b', 'c', 'd', 'e', 'f'],
+                    },
+                },
+                channels: {
+                    currentChannelId: 'abcd',
+                },
+            },
+        };
+        const actual = Selectors.getCurrentUsersLatestPost(state);
+
+        assert.equal(actual, postsAny.f);
+    });
+
+    it('return first post which has rootId match', () => {
+        const postsAny = {
+            a: {id: 'a', channel_id: 'a', create_at: 1, user_id: 'a'},
+            b: {id: 'b', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', state: Posts.POST_DELETED},
+            c: {id: 'c', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', type: 'system_join_channel'},
+            d: {id: 'd', root_id: 'a', channel_id: 'abcd', create_at: 3, user_id: 'b', type: Posts.POST_TYPES.EPHEMERAL},
+            e: {id: 'e', channel_id: 'abcd', create_at: 4, user_id: 'c'},
+            f: {id: 'f', root_id: 'e', channel_id: 'abcd', create_at: 4, user_id: user1.id},
+        };
+        const state = {
+            entities: {
+                users: {
+                    currentUserId: user1.id,
+                    profiles,
+                },
+                posts: {
+                    posts: postsAny,
+                    postsInChannel: {
+                        abcd: ['b', 'c', 'd', 'e', 'f'],
+                    },
+                },
+                channels: {
+                    currentChannelId: 'abcd',
+                },
+            },
+        };
+        const actual = Selectors.getCurrentUsersLatestPost(state, 'e');
+
+        assert.equal(actual, postsAny.f);
+    });
+
+    it('determine the sending posts', () => {
+        const state = {
+            entities: {
+                users: {
+                    currentUserId: user1.id,
+                    profiles,
+                },
+                posts: {
+                    posts: {},
+                    postsInChannel: {},
+                    sendingPostIds: ['1', '2', '3'],
+                },
+                channels: {
+                    currentChannelId: 'abcd',
+                },
+            },
+        };
+
+        assert.equal(Selectors.isPostIdSending(state, '1'), true);
+        assert.equal(Selectors.isPostIdSending(state, '2'), true);
+        assert.equal(Selectors.isPostIdSending(state, '3'), true);
+        assert.equal(Selectors.isPostIdSending(state, '4'), false);
+        assert.equal(Selectors.isPostIdSending(state), false);
     });
 });

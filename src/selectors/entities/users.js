@@ -1,17 +1,25 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {createSelector} from 'reselect';
 
-import {getCurrentChannelId, getMyCurrentChannelMembership} from './channels';
-import {getCurrentTeamId, getCurrentTeamMembership} from './teams';
-import {getDirectShowPreferences} from './preferences';
+import {
+    getCurrentChannelId,
+    getCurrentUser,
+    getCurrentUserId,
+    getUsers,
+    getMyCurrentChannelMembership,
+} from 'selectors/entities/common';
+
+import {getDirectShowPreferences} from 'selectors/entities/preferences';
 
 import {filterProfilesMatchingTerm, sortByUsername, isSystemAdmin} from 'utils/user_utils';
 
-export function getCurrentUserId(state) {
-    return state.entities.users.currentUserId;
-}
+export {
+    getCurrentUserId,
+    getCurrentUser,
+    getUsers,
+};
 
 export function getUserIdsInChannels(state) {
     return state.entities.users.profilesInChannel;
@@ -39,10 +47,6 @@ export function getUserStatuses(state) {
 
 export function getUser(state, id) {
     return state.entities.users.profiles[id];
-}
-
-export function getUsers(state) {
-    return state.entities.users.profiles;
 }
 
 export const getUsersByUsername = createSelector(
@@ -82,10 +86,6 @@ export function getUserByEmail(state, email) {
     return getUsersByEmail(state)[email];
 }
 
-export function getCurrentUser(state) {
-    return state.entities.users.profiles[getCurrentUserId(state)];
-}
-
 export const isCurrentUserSystemAdmin = createSelector(
     getCurrentUser,
     (user) => {
@@ -96,7 +96,7 @@ export const isCurrentUserSystemAdmin = createSelector(
 
 export const getCurrentUserRoles = createSelector(
     getMyCurrentChannelMembership,
-    getCurrentTeamMembership,
+    (state) => state.entities.teams.myMembers[state.entities.teams.currentTeamId],
     getCurrentUser,
     (currentChannelMembership, currentTeamMembership, currentUser) => {
         let roles = '';
@@ -125,22 +125,24 @@ export const getCurrentUserMentionKeys = createSelector(
         }
 
         if (user.notify_props.mention_keys) {
-            keys = keys.concat(user.notify_props.mention_keys.split(','));
+            keys = keys.concat(user.notify_props.mention_keys.split(',').map((key) => {
+                return {key};
+            }));
         }
 
         if (user.notify_props.first_name === 'true' && user.first_name) {
-            keys.push(user.first_name);
+            keys.push({key: user.first_name, caseSensitive: true});
         }
 
         if (user.notify_props.channel === 'true') {
-            keys.push('@channel');
-            keys.push('@all');
-            keys.push('@here');
+            keys.push({key: '@channel'});
+            keys.push({key: '@all'});
+            keys.push({key: '@here'});
         }
 
         const usernameKey = '@' + user.username;
-        if (keys.indexOf(usernameKey) === -1) {
-            keys.push(usernameKey);
+        if (keys.findIndex((key) => key.key === usernameKey) === -1) {
+            keys.push({key: usernameKey});
         }
 
         return keys;
@@ -164,7 +166,7 @@ export const getProfileSetNotInCurrentChannel = createSelector(
 );
 
 export const getProfileSetInCurrentTeam = createSelector(
-    getCurrentTeamId,
+    (state) => state.entities.teams.currentTeamId,
     getUserIdsInTeams,
     (currentTeam, teamProfiles) => {
         return teamProfiles[currentTeam];
@@ -172,31 +174,39 @@ export const getProfileSetInCurrentTeam = createSelector(
 );
 
 export const getProfileSetNotInCurrentTeam = createSelector(
-    getCurrentTeamId,
+    (state) => state.entities.teams.currentTeamId,
     getUserIdsNotInTeams,
     (currentTeam, teamProfiles) => {
         return teamProfiles[currentTeam];
     }
 );
 
+const PROFILE_SET_ALL = 'all';
 function sortAndInjectProfiles(profiles, profileSet, skipInactive = false) {
-    const currentProfiles = [];
+    let currentProfiles = [];
     if (typeof profileSet === 'undefined') {
         return currentProfiles;
+    } else if (profileSet === PROFILE_SET_ALL) {
+        currentProfiles = Object.values(profiles);
+    } else {
+        currentProfiles = Array.from(profileSet).map((p) => profiles[p]);
     }
 
-    profileSet.forEach((p) => {
-        const profile = profiles[p];
-        if (skipInactive && profile.delete_at && profile.delete_at !== 0) {
-            return;
-        }
-        currentProfiles.push(profile);
-    });
+    currentProfiles = currentProfiles.filter((profile) => Boolean(profile));
 
-    const sortedCurrentProfiles = currentProfiles.sort(sortByUsername);
+    if (skipInactive) {
+        currentProfiles = currentProfiles.filter((profile) => !(profile.delete_at && profile.delete_at !== 0));
+    }
 
-    return sortedCurrentProfiles;
+    return currentProfiles.sort(sortByUsername);
 }
+
+export const getProfiles = createSelector(
+    getUsers,
+    (profiles) => {
+        return sortAndInjectProfiles(profiles, PROFILE_SET_ALL);
+    }
+);
 
 export const getProfilesInCurrentChannel = createSelector(
     getUsers,

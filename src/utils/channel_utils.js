@@ -1,15 +1,17 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
-import {General, Preferences} from 'constants';
+import {General, Preferences, Permissions} from 'constants';
 import {displayUsername} from './user_utils';
 import {getPreferencesByCategory} from './preference_utils';
+import {hasNewPermissions} from 'selectors/entities/general';
+import {haveITeamPermission, haveIChannelPermission} from 'selectors/entities/roles';
 
 const channelTypeOrder = {
     [General.OPEN_CHANNEL]: 0,
     [General.PRIVATE_CHANNEL]: 1,
     [General.DM_CHANNEL]: 2,
-    [General.GM_CHANNEL]: 2
+    [General.GM_CHANNEL]: 2,
 };
 
 /**
@@ -22,7 +24,7 @@ const channelTypeOrder = {
  *  favoriteChannels: [...]
  * }
  */
-export function buildDisplayableChannelList(usersState, allChannels, config, myPreferences, teammateNameDisplay, lastPosts) {
+export function buildDisplayableChannelList(usersState, allChannels, myMembers, config, myPreferences, teammateNameDisplay, lastPosts) {
     const missingDirectChannels = createMissingDirectChannels(usersState.currentUserId, allChannels, myPreferences);
 
     const {currentUserId, profiles} = usersState;
@@ -31,13 +33,13 @@ export function buildDisplayableChannelList(usersState, allChannels, config, myP
     const channels = buildChannels(usersState, allChannels, missingDirectChannels, teammateNameDisplay, locale);
     const favoriteChannels = buildFavoriteChannels(channels, myPreferences, locale);
     const notFavoriteChannels = buildNotFavoriteChannels(channels, myPreferences);
-    const directAndGroupChannels = buildDirectAndGroupChannels(notFavoriteChannels, config, myPreferences, currentUserId, lastPosts);
+    const directAndGroupChannels = buildDirectAndGroupChannels(notFavoriteChannels, myMembers, config, myPreferences, currentUserId, profiles, lastPosts);
 
     return {
         favoriteChannels,
         publicChannels: notFavoriteChannels.filter(isOpenChannel),
         privateChannels: notFavoriteChannels.filter(isPrivateChannel),
-        directAndGroupChannels
+        directAndGroupChannels,
     };
 }
 
@@ -51,14 +53,14 @@ export function buildDisplayableChannelListWithUnreadSection(usersState, myChann
     const notUnreadChannels = channels.filter(not(isUnreadChannel.bind(null, myMembers)));
     const favoriteChannels = buildFavoriteChannels(notUnreadChannels, myPreferences, locale);
     const notFavoriteChannels = buildNotFavoriteChannels(notUnreadChannels, myPreferences);
-    const directAndGroupChannels = buildDirectAndGroupChannels(notFavoriteChannels, config, myPreferences, currentUserId, lastPosts);
+    const directAndGroupChannels = buildDirectAndGroupChannels(notFavoriteChannels, myMembers, config, myPreferences, currentUserId, profiles, lastPosts);
 
     return {
         unreadChannels,
         favoriteChannels,
         publicChannels: notFavoriteChannels.filter(isOpenChannel),
         privateChannels: notFavoriteChannels.filter(isPrivateChannel),
-        directAndGroupChannels
+        directAndGroupChannels,
     };
 }
 
@@ -70,7 +72,7 @@ export function completeDirectChannelInfo(usersState, teammateNameDisplay, chann
         return Object.assign(dmChannelClone, {
             display_name: displayUsername(usersState.profiles[teammateId], teammateNameDisplay),
             teammate_id: teammateId,
-            status: usersState.statuses[teammateId] || 'offline'
+            status: usersState.statuses[teammateId] || 'offline',
         });
     } else if (isGroupChannel(channel)) {
         return completeDirectGroupInfo(usersState, teammateNameDisplay, channel);
@@ -97,7 +99,7 @@ export function completeDirectChannelDisplayName(currentUserId, profiles, teamma
         });
         if (usernames.length === userIds.length) {
             return Object.assign({}, channel, {
-                display_name: getGroupDisplayNameFromUserIds(userIds, profiles, currentUserId, teammateNameDisplay)
+                display_name: getGroupDisplayNameFromUserIds(userIds, profiles, currentUserId, teammateNameDisplay),
             });
         }
     }
@@ -148,22 +150,32 @@ export function getUserIdFromChannelName(userId, channelName) {
     return otherUserId;
 }
 
-export function isDirectChannel(channel) {
-    return channel.type === General.DM_CHANNEL;
-}
+export function isAutoClosed(config, myPreferences, channel, channelActivity, channelArchiveTime, currentChannelId = '') {
+    const cutoff = new Date().getTime() - (7 * 24 * 60 * 60 * 1000);
 
-export function isAutoClosed(config, myPreferences, channel, channelActivity) {
+    const viewTimePref = myPreferences[`${Preferences.CATEGORY_CHANNEL_APPROXIMATE_VIEW_TIME}--${channel.id}`];
+    const viewTime = viewTimePref ? parseInt(viewTimePref.value, 10) : 0;
+    if (viewTime > cutoff) {
+        return false;
+    }
+
+    const openTimePref = myPreferences[`${Preferences.CATEGORY_CHANNEL_OPEN_TIME}--${channel.id}`];
+    const openTime = openTimePref ? parseInt(openTimePref.value, 10) : 0;
+
+    // Only close archived channels when not being viewed
+    if (channel.id !== currentChannelId && channelArchiveTime && channelArchiveTime > openTime) {
+        return true;
+    }
+
     if (config.CloseUnusedDirectMessages !== 'true' || isFavoriteChannel(myPreferences, channel.id)) {
         return false;
     }
     const autoClose = myPreferences[`${Preferences.CATEGORY_SIDEBAR_SETTINGS}--close_unused_direct_messages`];
     if (!autoClose || autoClose.value === 'after_seven_days') {
-        const cutoff = new Date().getTime() - (7 * 24 * 60 * 60 * 1000);
         if (channelActivity && channelActivity > cutoff) {
             return false;
         }
-        const openTime = myPreferences[`${Preferences.CATEGORY_CHANNEL_OPEN_TIME}--${channel.id}`];
-        if (openTime && parseInt(openTime.value, 10) > cutoff) {
+        if (openTime > cutoff) {
             return false;
         }
         const lastActivity = channel.last_post_at;
@@ -172,22 +184,54 @@ export function isAutoClosed(config, myPreferences, channel, channelActivity) {
     return false;
 }
 
-export function isDirectChannelVisible(userId, config, myPreferences, channel, lastPost) {
-    const channelId = getUserIdFromChannelName(userId, channel.name);
-    const dm = myPreferences[`${Preferences.CATEGORY_DIRECT_CHANNEL_SHOW}--${channelId}`];
-    return !isAutoClosed(config, myPreferences, channel, lastPost ? lastPost.create_at : 0) && dm && dm.value === 'true';
+export function isDirectChannel(channel) {
+    return channel.type === General.DM_CHANNEL;
+}
+
+export function isDirectChannelVisible(otherUserOrOtherUserId, config, myPreferences, channel, lastPost, isUnread, currentChannelId) {
+    const otherUser = typeof otherUserOrOtherUserId === 'object' ? otherUserOrOtherUserId : null;
+    const otherUserId = typeof otherUserOrOtherUserId === 'object' ? otherUserOrOtherUserId.id : otherUserOrOtherUserId;
+    const dm = myPreferences[`${Preferences.CATEGORY_DIRECT_CHANNEL_SHOW}--${otherUserId}`];
+    if (!dm || dm.value !== 'true') {
+        return false;
+    }
+    return isUnread || !isAutoClosed(config, myPreferences, channel, lastPost ? lastPost.create_at : 0, otherUser ? otherUser.delete_at : 0, currentChannelId);
 }
 
 export function isGroupChannel(channel) {
     return channel.type === General.GM_CHANNEL;
 }
 
-export function isGroupChannelVisible(config, myPreferences, channel, lastPost) {
+export function isGroupChannelVisible(config, myPreferences, channel, lastPost, isUnread) {
     const gm = myPreferences[`${Preferences.CATEGORY_GROUP_CHANNEL_SHOW}--${channel.id}`];
-    return !isAutoClosed(config, myPreferences, channel, lastPost ? lastPost.create_at : 0) && gm && gm.value === 'true';
+    if (!gm || gm.value !== 'true') {
+        return false;
+    }
+    return isUnread || !isAutoClosed(config, myPreferences, channel, lastPost ? lastPost.create_at : 0);
 }
 
-export function showCreateOption(config, license, channelType, isAdmin, isSystemAdmin) {
+export function isGroupOrDirectChannelVisible(channel, memberships, config, myPreferences, currentUserId, users, lastPosts) {
+    const lastPost = lastPosts[channel.id];
+    if (isGroupChannel(channel) && isGroupChannelVisible(config, myPreferences, channel, lastPost, isUnreadChannel(memberships, channel))) {
+        return true;
+    }
+    if (!isDirectChannel(channel)) {
+        return false;
+    }
+    const otherUserId = getUserIdFromChannelName(currentUserId, channel.name);
+    return isDirectChannelVisible(users[otherUserId] || otherUserId, config, myPreferences, channel, lastPost, isUnreadChannel(memberships, channel));
+}
+
+export function showCreateOption(state, config, license, teamId, channelType, isAdmin, isSystemAdmin) {
+    if (hasNewPermissions(state)) {
+        if (channelType === General.OPEN_CHANNEL) {
+            return haveITeamPermission(state, {team: teamId, permission: Permissions.CREATE_PUBLIC_CHANNEL});
+        } else if (channelType === General.PRIVATE_CHANNEL) {
+            return haveITeamPermission(state, {team: teamId, permission: Permissions.CREATE_PRIVATE_CHANNEL});
+        }
+        return true;
+    }
+
     if (license.IsLicensed !== 'true') {
         return true;
     }
@@ -209,7 +253,16 @@ export function showCreateOption(config, license, channelType, isAdmin, isSystem
     return true;
 }
 
-export function showManagementOptions(config, license, channel, isAdmin, isSystemAdmin, isChannelAdmin) {
+export function showManagementOptions(state, config, license, channel, isAdmin, isSystemAdmin, isChannelAdmin) {
+    if (hasNewPermissions(state)) {
+        if (channel.type === General.OPEN_CHANNEL) {
+            return haveIChannelPermission(state, {channel: channel.id, team: channel.team_id, permission: Permissions.MANAGE_PUBLIC_CHANNEL_PROPERTIES});
+        } else if (channel.type === General.PRIVATE_CHANNEL) {
+            return haveIChannelPermission(state, {channel: channel.id, team: channel.team_id, permission: Permissions.MANAGE_PRIVATE_CHANNEL_PROPERTIES});
+        }
+        return true;
+    }
+
     if (license.IsLicensed !== 'true') {
         return true;
     }
@@ -239,7 +292,16 @@ export function showManagementOptions(config, license, channel, isAdmin, isSyste
     return true;
 }
 
-export function showDeleteOption(config, license, channel, isAdmin, isSystemAdmin, isChannelAdmin) {
+export function showDeleteOption(state, config, license, channel, isAdmin, isSystemAdmin, isChannelAdmin) {
+    if (hasNewPermissions(state)) {
+        if (channel.type === General.OPEN_CHANNEL) {
+            return haveIChannelPermission(state, {channel: channel.id, team: channel.team_id, permission: Permissions.DELETE_PUBLIC_CHANNEL});
+        } else if (channel.type === General.PRIVATE_CHANNEL) {
+            return haveIChannelPermission(state, {channel: channel.id, team: channel.team_id, permission: Permissions.DELETE_PRIVATE_CHANNEL});
+        }
+        return true;
+    }
+
     if (license.IsLicensed !== 'true') {
         return true;
     }
@@ -269,7 +331,7 @@ export function showDeleteOption(config, license, channel, isAdmin, isSystemAdmi
     return true;
 }
 
-export function canManageMembers(channel, user, teamMember, channelMember, config, license) {
+export function canManageMembersOldPermissions(channel, user, teamMember, channelMember, config, license) {
     if (channel.type === General.DM_CHANNEL ||
         channel.type === General.GM_CHANNEL ||
         channel.name === General.DEFAULT_CHANNEL) {
@@ -344,7 +406,7 @@ function createFakeChannel(userId, otherUserId) {
         last_post_at: 0,
         total_msg_count: 0,
         type: General.DM_CHANNEL,
-        fake: true
+        fake: true,
     };
 }
 
@@ -370,7 +432,7 @@ function completeDirectGroupInfo(usersState, teammateNameDisplay, channel) {
 
     if (profilesIds) {
         return Object.assign(gm, {
-            display_name: getGroupDisplayNameFromUserIds(profilesIds, profiles, currentUserId, teammateNameDisplay)
+            display_name: getGroupDisplayNameFromUserIds(profilesIds, profiles, currentUserId, teammateNameDisplay),
         });
     }
 
@@ -385,7 +447,7 @@ function completeDirectGroupInfo(usersState, teammateNameDisplay, channel) {
     });
     if (usernames.length === userIds.length) {
         return Object.assign(gm, {
-            display_name: getGroupDisplayNameFromUserIds(userIds, profiles, currentUserId, teammateNameDisplay)
+            display_name: getGroupDisplayNameFromUserIds(userIds, profiles, currentUserId, teammateNameDisplay),
         });
     }
 
@@ -439,7 +501,7 @@ export function isPrivateChannel(channel) {
 }
 
 export function sortChannelsByTypeAndDisplayName(locale, a, b) {
-    if (a.type !== b.type) {
+    if (channelTypeOrder[a.type] !== channelTypeOrder[b.type]) {
         if (channelTypeOrder[a.type] < channelTypeOrder[b.type]) {
             return -1;
         }
@@ -469,16 +531,35 @@ export function sortChannelsByDisplayName(locale, a, b) {
     return a.name.toLowerCase().localeCompare(b.name.toLowerCase(), locale, {numeric: true});
 }
 
+export function sortChannelsByDisplayNameAndMuted(locale, members, a, b) {
+    const aMember = members[a.id];
+    const bMember = members[b.id];
+
+    if (isChannelMuted(bMember) === isChannelMuted(aMember)) {
+        return sortChannelsByDisplayName(locale, a, b);
+    }
+
+    if (!isChannelMuted(bMember) && isChannelMuted(aMember)) {
+        return 1;
+    }
+
+    return -1;
+}
+
+export function isChannelMuted(member) {
+    return member && member.notify_props ? (member.notify_props.mark_unread === 'mention') : false;
+}
+
 function not(f) {
     return (...args) => !f(...args);
 }
 
 function buildChannels(usersState, channels, missingDirectChannels, teammateNameDisplay, locale) {
     return channels.
-    concat(missingDirectChannels).
-    map(completeDirectChannelInfo.bind(null, usersState, teammateNameDisplay)).
-    filter(isNotDeletedChannel).
-    sort(sortChannelsByTypeAndDisplayName.bind(null, locale));
+        concat(missingDirectChannels).
+        map(completeDirectChannelInfo.bind(null, usersState, teammateNameDisplay)).
+        filter(isNotDeletedChannel).
+        sort(sortChannelsByTypeAndDisplayName.bind(null, locale));
 }
 
 function buildFavoriteChannels(channels, myPreferences, locale) {
@@ -489,19 +570,15 @@ function buildNotFavoriteChannels(channels, myPreferences) {
     return channels.filter((channel) => !isFavoriteChannel(myPreferences, channel.id));
 }
 
-function buildDirectAndGroupChannels(channels, config, myPreferences, currentUserId, lastPosts) {
+function buildDirectAndGroupChannels(channels, memberships, config, myPreferences, currentUserId, users, lastPosts) {
     return channels.filter((channel) => {
-        const lastPost = lastPosts[channel.id];
-        if (isGroupChannel(channel) && isGroupChannelVisible(config, myPreferences, channel, lastPost)) {
-            return true;
-        }
-        return isDirectChannel(channel) && isDirectChannelVisible(currentUserId, config, myPreferences, channel, lastPost);
+        return isGroupOrDirectChannelVisible(channel, memberships, config, myPreferences, currentUserId, users, lastPosts);
     });
 }
 
 function buildChannelsWithMentions(channels, members, locale) {
     return channels.filter(channelHasMentions.bind(null, members)).
-    sort(sortChannelsByDisplayName.bind(null, locale));
+        sort(sortChannelsByDisplayName.bind(null, locale));
 }
 
 function buildUnreadChannels(channels, members, locale) {
@@ -510,7 +587,7 @@ function buildUnreadChannels(channels, members, locale) {
 }
 
 function getUserLocale(userId, profiles) {
-    let locale = 'en';
+    let locale = General.DEFAULT_LOCALE;
     if (profiles && profiles[userId] && profiles[userId].locale) {
         locale = profiles[userId].locale;
     }

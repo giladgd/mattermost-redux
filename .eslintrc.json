@@ -1,5 +1,8 @@
 {
-    "extends": "eslint:recommended",
+    "extends": [
+        "eslint:recommended",
+        "plugin:flowtype/recommended"
+    ],
     "parserOptions": {
         "ecmaVersion": 6,
         "sourceType": "module",
@@ -11,7 +14,9 @@
     },
     "parser": "babel-eslint",
     "plugins": [
-        "mocha"
+        "header",
+        "mocha",
+        "flowtype"
     ],
     "env": {
         "browser": true,
@@ -39,7 +44,7 @@
         "brace-style": [2, "1tbs", { "allowSingleLine": false }],
         "camelcase": [2, {"properties": "never"}],
         "class-methods-use-this": 0,
-        "comma-dangle": [2, "never"],
+        "comma-dangle": [2, "always-multiline"],
         "comma-spacing": [2, {"before": false, "after": true}],
         "comma-style": [2, "last"],
         "complexity": [1, 10],
@@ -53,10 +58,11 @@
         "eqeqeq": [2, "smart"],
         "func-call-spacing": [2, "never"],
         "func-names": 2,
-        "func-style": [2, "declaration"],
+        "func-style": [2, "declaration", { "allowArrowFunctions": true }],
         "generator-star-spacing": [0, {"before": false, "after": true}],
         "global-require": 2,
         "guard-for-in": 2,
+        "header/header": [2, "line", " Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.\n See LICENSE.txt for license information."],
         "id-blacklist": 0,
         "indent": [2, 4, {"SwitchCase": 0, "CallExpression": {"arguments": 1}}],
         "jsx-quotes": [2, "prefer-single"],
@@ -197,7 +203,7 @@
         "sort-imports": 0,
         "sort-keys": 0,
         "space-before-blocks": [2, "always"],
-        "space-before-function-paren": [2, "never"],
+        "space-before-function-paren": [2, {"anonymous": "never", "named": "never", "asyncArrow": "always"}],
         "space-in-parens": [2, "never"],
         "space-infix-ops": 2,
         "space-unary-ops": [2, { "words": true, "nonwords": false }],

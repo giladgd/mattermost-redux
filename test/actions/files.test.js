@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import fs from 'fs';
 import assert from 'assert';
@@ -172,7 +172,7 @@ describe('Actions.Files', () => {
             get(`/files/${fileId}/link`).
             query(true).
             reply(200, {
-                link: 'https://mattermost.com/files/ndans23ry2rtjd1z73g6i5f3fc/public?h=rE1-b2N1VVVMsAQssjwlfNawbVOwUy1TRDuTeGC_tys'
+                link: 'https://mattermost.com/files/ndans23ry2rtjd1z73g6i5f3fc/public?h=rE1-b2N1VVVMsAQssjwlfNawbVOwUy1TRDuTeGC_tys',
             });
 
         await Actions.getFilePublicLink(fileId)(store.dispatch, store.getState);

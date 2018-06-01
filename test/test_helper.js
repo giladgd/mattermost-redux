@@ -1,10 +1,13 @@
-// Copyright (c) 2016 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 import nock from 'nock';
 
 import Client4 from 'client/client4';
+
+import {DEFAULT_LOCALE} from 'constants/general';
+import {generateId} from 'utils/helpers';
 
 const DEFAULT_SERVER = `${process.env.MATTERMOST_SERVER_URL || 'http://localhost:8065'}`; //eslint-disable-line no-process-env
 const EMAIL = `${process.env.MATTERMOST_REDUX_EMAIL || 'redux-admin@simulator.amazonses.com'}`; //eslint-disable-line no-process-env
@@ -21,6 +24,8 @@ class TestHelper {
         this.basicChannel = null;
         this.basicChannelMember = null;
         this.basicPost = null;
+        this.basicRoles = null;
+        this.basicScheme = null;
     }
 
     activateMocking() {
@@ -35,23 +40,7 @@ class TestHelper {
     };
 
     generateId = () => {
-        // Implementation taken from http://stackoverflow.com/a/2117523
-        let id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
-
-        id = id.replace(/[xy]/g, (c) => {
-            const r = Math.floor(Math.random() * 16);
-
-            let v;
-            if (c === 'x') {
-                v = r;
-            } else {
-                v = (r & 0x3) | 0x8;
-            }
-
-            return v.toString(16);
-        });
-
-        return 'uid' + id;
+        return generateId();
     };
 
     createClient4 = () => {
@@ -71,17 +60,22 @@ class TestHelper {
             email: this.fakeEmail(),
             allow_marketing: true,
             password: PASSWORD,
-            locale: 'en',
+            locale: DEFAULT_LOCALE,
             username: this.generateId(),
             first_name: this.generateId(),
-            last_name: this.generateId()
+            last_name: this.generateId(),
+            create_at: Date.now(),
+            delete_at: 0,
         };
     };
 
     fakeUserWithId = () => {
         return {
             ...this.fakeUser(),
-            id: this.generateId()
+            id: this.generateId(),
+            create_at: 1507840900004,
+            update_at: 1507840900004,
+            delete_at: 0,
         };
     };
 
@@ -98,14 +92,18 @@ class TestHelper {
             type: 'O',
             email: this.fakeEmail(),
             allowed_domains: '',
-            invite_id: inviteId
+            invite_id: inviteId,
+            scheme_id: this.generateId(),
         };
     };
 
     fakeTeamWithId = () => {
         return {
             ...this.fakeTeam(),
-            id: this.generateId()
+            id: this.generateId(),
+            create_at: 1507840900004,
+            update_at: 1507840900004,
+            delete_at: 0,
         };
     };
 
@@ -114,20 +112,42 @@ class TestHelper {
             user_id: userId,
             team_id: teamId,
             roles: 'team_user',
-            delete_at: 0
+            delete_at: 0,
+            scheme_user: false,
+            scheme_admin: false,
         };
     };
 
     fakeOutgoingHook = (teamId) => {
         return {
-            teamId
+            teamId,
         };
     };
 
     fakeOutgoingHookWithId = (teamId) => {
         return {
             ...this.fakeOutgoingHook(teamId),
-            id: this.generateId()
+            id: this.generateId(),
+        };
+    };
+
+    mockScheme = () => {
+        return {
+            name: this.generateId(),
+            description: this.generateId(),
+            scope: 'channel',
+            defaultchanneladminrole: false,
+            defaultchanneluserrole: false,
+        };
+    };
+
+    mockSchemeWithId = () => {
+        return {
+            ...this.mockScheme(),
+            id: this.generateId(),
+            create_at: 1507840900004,
+            update_at: 1507840900004,
+            delete_at: 0,
         };
     };
 
@@ -141,7 +161,7 @@ class TestHelper {
             channel_id: this.basicChannel.id,
             team_id: this.basicTeam.id,
             display_name: 'test',
-            description: 'test'
+            description: 'test',
         };
     };
 
@@ -160,7 +180,7 @@ class TestHelper {
             callback_urls: ['http://localhost/notarealendpoint'],
             display_name: 'test',
             description: '',
-            content_type: 'application/x-www-form-urlencoded'
+            content_type: 'application/x-www-form-urlencoded',
         };
     }
 
@@ -180,7 +200,7 @@ class TestHelper {
             auto_complete_hint: 'test',
             display_name: 'test',
             description: 'test',
-            url: 'http://localhost/notarealendpoint'
+            url: 'http://localhost/notarealendpoint',
         };
     };
 
@@ -193,14 +213,18 @@ class TestHelper {
             display_name: `Unit Test ${name}`,
             type: 'O',
             delete_at: 0,
-            total_msg_count: 0
+            total_msg_count: 0,
+            scheme_id: this.generateId(),
         };
     };
 
     fakeChannelWithId = (teamId) => {
         return {
             ...this.fakeChannel(teamId),
-            id: this.generateId()
+            id: this.generateId(),
+            create_at: 1507840900004,
+            update_at: 1507840900004,
+            delete_at: 0,
         };
     };
 
@@ -211,21 +235,27 @@ class TestHelper {
             notify_props: {},
             roles: 'system_user',
             msg_count: 0,
-            mention_count: 0
+            mention_count: 0,
+            scheme_user: false,
+            scheme_admin: false,
         };
     };
 
     fakePost = (channelId) => {
         return {
             channel_id: channelId,
-            message: `Unit Test ${this.generateId()}`
+            message: `Unit Test ${this.generateId()}`,
+            type: '',
         };
     };
 
     fakePostWithId = (channelId) => {
         return {
             ...this.fakePost(channelId),
-            id: this.generateId()
+            id: this.generateId(),
+            create_at: 1507840900004,
+            update_at: 1507840900004,
+            delete_at: 0,
         };
     };
 
@@ -233,7 +263,7 @@ class TestHelper {
         const files = [];
         while (files.length < count) {
             files.push({
-                id: this.generateId()
+                id: this.generateId(),
             });
         }
 
@@ -248,14 +278,14 @@ class TestHelper {
             description: 'fake app',
             is_trusted: false,
             icon_url: 'http://localhost/notrealurl',
-            update_at: 1507841118796
+            update_at: 1507841118796,
         };
     };
 
     fakeOAuthAppWithId = () => {
         return {
             ...this.fakeOAuthApp(),
-            id: this.generateId()
+            id: this.generateId(),
         };
     };
 
@@ -303,9 +333,78 @@ class TestHelper {
         this.basicUser.roles = 'system_user system_admin';
         this.basicTeam = this.fakeTeamWithId();
         this.basicTeamMember = this.fakeTeamMember(this.basicUser.id, this.basicTeam.id);
-        this.basicChannel = this.fakeChannelWithId();
+        this.basicChannel = this.fakeChannelWithId(this.basicTeam.id);
         this.basicChannelMember = this.fakeChannelMember(this.basicUser.id, this.basicChannel.id);
         this.basicPost = {...this.fakePostWithId(this.basicChannel.id), create_at: 1507841118796};
+        this.basicRoles = {
+            system_admin: {
+                id: this.generateId(),
+                name: 'system_admin',
+                display_name: 'authentication.roles.global_admin.name',
+                description: 'authentication.roles.global_admin.description',
+                permissions: [
+                    'system_admin_permission',
+                ],
+                scheme_managed: true,
+                built_in: true,
+            },
+            system_user: {
+                id: this.generateId(),
+                name: 'system_user',
+                display_name: 'authentication.roles.global_user.name',
+                description: 'authentication.roles.global_user.description',
+                permissions: [
+                    'system_user_permission',
+                ],
+                scheme_managed: true,
+                built_in: true,
+            },
+            team_admin: {
+                id: this.generateId(),
+                name: 'team_admin',
+                display_name: 'authentication.roles.team_admin.name',
+                description: 'authentication.roles.team_admin.description',
+                permissions: [
+                    'team_admin_permission',
+                ],
+                scheme_managed: true,
+                built_in: true,
+            },
+            team_user: {
+                id: this.generateId(),
+                name: 'team_user',
+                display_name: 'authentication.roles.team_user.name',
+                description: 'authentication.roles.team_user.description',
+                permissions: [
+                    'team_user_permission',
+                ],
+                scheme_managed: true,
+                built_in: true,
+            },
+            channel_admin: {
+                id: this.generateId(),
+                name: 'channel_admin',
+                display_name: 'authentication.roles.channel_admin.name',
+                description: 'authentication.roles.channel_admin.description',
+                permissions: [
+                    'channel_admin_permission',
+                ],
+                scheme_managed: true,
+                built_in: true,
+            },
+            channel_user: {
+                id: this.generateId(),
+                name: 'channel_user',
+                display_name: 'authentication.roles.channel_user.name',
+                description: 'authentication.roles.channel_user.description',
+                permissions: [
+                    'channel_user_permission',
+                ],
+                scheme_managed: true,
+                built_in: true,
+            },
+        };
+        this.basicScheme = this.mockSchemeWithId();
     }
 
     initBasic = async (client4 = this.createClient4()) => {
@@ -324,7 +423,7 @@ class TestHelper {
             user: this.basicUser,
             team: this.basicTeam,
             channel: this.basicChannel,
-            post: this.basicPost
+            post: this.basicPost,
         };
     };
 

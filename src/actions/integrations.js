@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {IntegrationTypes} from 'action_types';
 import {General} from 'constants';
@@ -49,11 +49,11 @@ export function removeIncomingHook(hookId) {
         try {
             await Client4.removeIncomingWebhook(hookId);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
 
             dispatch(batchActions([
                 {type: IntegrationTypes.DELETE_INCOMING_HOOK_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -61,11 +61,11 @@ export function removeIncomingHook(hookId) {
         dispatch(batchActions([
             {
                 type: IntegrationTypes.DELETED_INCOMING_HOOK,
-                data: {id: hookId}
+                data: {id: hookId},
             },
             {
-                type: IntegrationTypes.DELETE_INCOMING_HOOK_SUCCESS
-            }
+                type: IntegrationTypes.DELETE_INCOMING_HOOK_SUCCESS,
+            },
         ]), getState);
 
         return {data: true};
@@ -122,11 +122,11 @@ export function removeOutgoingHook(hookId) {
         try {
             await Client4.removeOutgoingWebhook(hookId);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
 
             dispatch(batchActions([
                 {type: IntegrationTypes.DELETE_OUTGOING_HOOK_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -134,11 +134,11 @@ export function removeOutgoingHook(hookId) {
         dispatch(batchActions([
             {
                 type: IntegrationTypes.DELETED_OUTGOING_HOOK,
-                data: {id: hookId}
+                data: {id: hookId},
             },
             {
-                type: IntegrationTypes.DELETE_OUTGOING_HOOK_SUCCESS
-            }
+                type: IntegrationTypes.DELETE_OUTGOING_HOOK_SUCCESS,
+            },
         ]), getState);
 
         return {data: true};
@@ -162,6 +162,28 @@ export function regenOutgoingHookToken(hookId) {
         [IntegrationTypes.RECEIVED_OUTGOING_HOOK, IntegrationTypes.UPDATE_OUTGOING_HOOK_SUCCESS],
         IntegrationTypes.UPDATE_OUTGOING_HOOK_FAILURE,
         hookId
+    );
+}
+
+export function getCommands(teamId) {
+    return bindClientFunc(
+        Client4.getCommandsList,
+        IntegrationTypes.GET_COMMANDS_REQUEST,
+        [IntegrationTypes.RECEIVED_COMMANDS, IntegrationTypes.GET_COMMANDS_SUCCESS],
+        IntegrationTypes.GET_COMMANDS_FAILURE,
+        teamId
+    );
+}
+
+export function getAutocompleteCommands(teamId, page = 0, perPage = General.PAGE_SIZE_DEFAULT) {
+    return bindClientFunc(
+        Client4.getAutocompleteCommandsList,
+        IntegrationTypes.GET_AUTOCOMPLETE_COMMANDS_REQUEST,
+        [IntegrationTypes.RECEIVED_COMMANDS, IntegrationTypes.GET_AUTOCOMPLETE_COMMANDS_SUCCESS],
+        IntegrationTypes.GET_AUTOCOMPLETE_COMMANDS_FAILURE,
+        teamId,
+        page,
+        perPage
     );
 }
 
@@ -195,6 +217,17 @@ export function editCommand(command) {
     );
 }
 
+export function executeCommand(command, args) {
+    return bindClientFunc(
+        Client4.executeCommand,
+        IntegrationTypes.EXECUTE_COMMAND_REQUEST,
+        IntegrationTypes.EXECUTE_COMMAND_SUCCESS,
+        IntegrationTypes.EXECUTE_COMMAND_FAILURE,
+        command,
+        args
+    );
+}
+
 export function regenCommandToken(id) {
     return async (dispatch, getState) => {
         dispatch({type: IntegrationTypes.REGEN_COMMAND_TOKEN_REQUEST}, getState);
@@ -203,11 +236,11 @@ export function regenCommandToken(id) {
         try {
             res = await Client4.regenCommandToken(id);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
 
             dispatch(batchActions([
                 {type: IntegrationTypes.REGEN_COMMAND_TOKEN_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -217,12 +250,12 @@ export function regenCommandToken(id) {
                 type: IntegrationTypes.RECEIVED_COMMAND_TOKEN,
                 data: {
                     id,
-                    token: res.token
-                }
+                    token: res.token,
+                },
             },
             {
-                type: IntegrationTypes.REGEN_COMMAND_TOKEN_SUCCESS
-            }
+                type: IntegrationTypes.REGEN_COMMAND_TOKEN_SUCCESS,
+            },
         ]), getState);
 
         return {data: true};
@@ -236,11 +269,11 @@ export function deleteCommand(id) {
         try {
             await Client4.deleteCommand(id);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
 
             dispatch(batchActions([
                 {type: IntegrationTypes.DELETE_COMMAND_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -248,11 +281,11 @@ export function deleteCommand(id) {
         dispatch(batchActions([
             {
                 type: IntegrationTypes.DELETED_COMMAND,
-                data: {id}
+                data: {id},
             },
             {
-                type: IntegrationTypes.DELETE_COMMAND_SUCCESS
-            }
+                type: IntegrationTypes.DELETE_COMMAND_SUCCESS,
+            },
         ]), getState);
 
         return {data: true};
@@ -307,11 +340,11 @@ export function deleteOAuthApp(id) {
         try {
             await Client4.deleteOAuthApp(id);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
 
             dispatch(batchActions([
                 {type: IntegrationTypes.DELETE_OAUTH_APP_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -319,11 +352,11 @@ export function deleteOAuthApp(id) {
         dispatch(batchActions([
             {
                 type: IntegrationTypes.DELETED_OAUTH_APP,
-                data: {id}
+                data: {id},
             },
             {
-                type: IntegrationTypes.DELETE_OAUTH_APP_SUCCESS
-            }
+                type: IntegrationTypes.DELETE_OAUTH_APP_SUCCESS,
+            },
         ]), getState);
 
         return {data: true};

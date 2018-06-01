@@ -1,8 +1,9 @@
-// Copyright (c) 2016 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 import nock from 'nock';
+import fs from 'fs';
 
 import * as Actions from 'actions/teams';
 import {login} from 'actions/users';
@@ -122,6 +123,29 @@ describe('Actions.Teams', () => {
         assert.ok(teams[team.id]);
     });
 
+    it('getTeamByName', async () => {
+        nock(Client4.getTeamsRoute()).
+            post('').
+            reply(201, TestHelper.fakeTeamWithId());
+        const team = await Client4.createTeam(TestHelper.fakeTeam());
+
+        nock(Client4.getTeamsRoute()).
+            get(`/name/${team.name}`).
+            reply(200, team);
+        await Actions.getTeamByName(team.name)(store.dispatch, store.getState);
+
+        const state = store.getState();
+        const {getTeam: teamRequest} = state.requests.teams;
+        const {teams} = state.entities.teams;
+
+        if (teamRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(teamRequest.error));
+        }
+
+        assert.ok(teams);
+        assert.ok(teams[team.id]);
+    });
+
     it('createTeam', async () => {
         nock(Client4.getTeamsRoute()).
             post('').
@@ -143,13 +167,62 @@ describe('Actions.Teams', () => {
         assert.ok(myMembers[teamId]);
     });
 
+    it('deleteTeam', async () => {
+        const secondClient = TestHelper.createClient4();
+
+        nock(Client4.getUsersRoute()).
+            post('').
+            query(true).
+            reply(201, TestHelper.fakeUserWithId());
+
+        const user = await TestHelper.basicClient4.createUser(
+            TestHelper.fakeUser(),
+            null,
+            null,
+            TestHelper.basicTeam.invite_id
+        );
+
+        nock(Client4.getUsersRoute()).
+            post('/login').
+            reply(200, user);
+        await secondClient.login(user.email, 'password1');
+
+        nock(Client4.getTeamsRoute()).
+            post('').
+            reply(201, TestHelper.fakeTeamWithId());
+        const secondTeam = await secondClient.createTeam(
+            TestHelper.fakeTeam());
+
+        nock(Client4.getTeamsRoute()).
+            delete(`/${secondTeam.id}`).
+            reply(200, OK_RESPONSE);
+
+        await Actions.deleteTeam(
+            secondTeam.id
+        )(store.dispatch, store.getState);
+
+        const deleteRequest = store.getState().requests.teams.deleteTeam;
+
+        if (deleteRequest === undefined) {
+            throw new Error(JSON.stringify(store.getState().requests.teams));
+        }
+
+        if (deleteRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(deleteRequest.error));
+        }
+
+        const {teams, myMembers} = store.getState().entities.teams;
+        assert.ifError(teams[secondTeam.id]);
+        assert.ifError(myMembers[secondTeam.id]);
+    });
+
     it('updateTeam', async () => {
         const displayName = 'The Updated Team';
         const description = 'This is a team created by unit tests';
         const team = {
             ...TestHelper.basicTeam,
             display_name: displayName,
-            description
+            description,
         };
 
         nock(Client4.getTeamsRoute()).
@@ -207,7 +280,7 @@ describe('Actions.Teams', () => {
 
         nock(Client4.getUserRoute('me')).
             get('/teams/members').
-            reply(200, [{user_id: TestHelper.basicUser.id, team_id: team.id}]);
+            reply(200, [{user_id: TestHelper.basicUser.id, roles: 'team_user', team_id: team.id}]);
 
         nock(Client4.getUserRoute('me')).
             get('/teams/unread').
@@ -231,7 +304,7 @@ describe('Actions.Teams', () => {
     it('getMyTeamMembers and getMyTeamUnreads', async () => {
         nock(Client4.getUserRoute('me')).
             get('/teams/members').
-            reply(200, [{user_id: TestHelper.basicUser.id, team_id: TestHelper.basicTeam.id}]);
+            reply(200, [{user_id: TestHelper.basicUser.id, roles: 'team_user', team_id: TestHelper.basicTeam.id}]);
         await Actions.getMyTeamMembers()(store.dispatch, store.getState);
 
         nock(Client4.getUserRoute('me')).
@@ -241,7 +314,7 @@ describe('Actions.Teams', () => {
 
         const {
             getMyTeamMembers: membersRequest,
-            getMyTeamUnreads: unreadRequest
+            getMyTeamUnreads: unreadRequest,
         } = store.getState().requests.teams;
         const members = store.getState().entities.teams.myMembers;
 
@@ -579,5 +652,70 @@ describe('Actions.Teams', () => {
         }
 
         assert.ok(exists === false);
+    });
+
+    it('setTeamIcon', async () => {
+        TestHelper.mockLogin();
+        await login(TestHelper.basicUser.email, 'password1')(store.dispatch, store.getState);
+
+        const team = TestHelper.basicTeam;
+        const imageData = fs.createReadStream('test/assets/images/test.png');
+
+        nock(Client4.getTeamRoute(team.id)).
+            post('/image').
+            reply(200, OK_RESPONSE);
+
+        await Actions.setTeamIcon(team.id, imageData)(store.dispatch, store.getState);
+
+        const setTeamIconRequest = store.getState().requests.teams.setTeamIcon;
+
+        if (setTeamIconRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(setTeamIconRequest.error));
+        }
+    });
+
+    it('removeTeamIcon', async () => {
+        TestHelper.mockLogin();
+        await login(TestHelper.basicUser.email, 'password1')(store.dispatch, store.getState);
+
+        const team = TestHelper.basicTeam;
+
+        nock(Client4.getTeamRoute(team.id)).
+            delete('/image').
+            reply(200, OK_RESPONSE);
+
+        await Actions.removeTeamIcon(team.id)(store.dispatch, store.getState);
+
+        const removeTeamIconRequest = store.getState().requests.teams.removeTeamIcon;
+
+        if (removeTeamIconRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(removeTeamIconRequest.error));
+        }
+    });
+
+    it('updateTeamScheme', async () => {
+        TestHelper.mockLogin();
+        await login(TestHelper.basicUser.email, 'password1')(store.dispatch, store.getState);
+
+        const schemeId = 'xxxxxxxxxxxxxxxxxxxxxxxxxx';
+        const {id} = TestHelper.basicTeam;
+
+        nock(Client4.getTeamsRoute()).
+            put('/' + id + '/scheme').
+            reply(200, OK_RESPONSE);
+
+        await Actions.updateTeamScheme(id, schemeId)(store.dispatch, store.getState);
+
+        const state = store.getState();
+        const request = state.requests.teams.updateTeamScheme;
+        const {teams} = state.entities.teams;
+
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(request.error));
+        }
+
+        const updated = teams[id];
+        assert.ok(updated);
+        assert.equal(updated.scheme_id, schemeId);
     });
 });

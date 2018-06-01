@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 
@@ -12,6 +12,7 @@ import {getPreferenceKey} from 'utils/preference_utils';
 
 describe('Selectors.Preferences', () => {
     const category1 = 'testcategory1';
+    const category2 = 'testcategory2';
     const directCategory = Preferences.CATEGORY_DIRECT_CHANNEL_SHOW;
     const groupCategory = Preferences.CATEGORY_GROUP_CHANNEL_SHOW;
     const favCategory = Preferences.CATEGORY_FAVORITE_CHANNEL;
@@ -19,6 +20,10 @@ describe('Selectors.Preferences', () => {
     const name1 = 'testname1';
     const value1 = 'true';
     const pref1 = {category: category1, name: name1, value: value1};
+
+    const name2 = 'testname2';
+    const value2 = '42';
+    const pref2 = {category: category2, name: name2, value: value2};
 
     const dm1 = 'teammate1';
     const dmPref1 = {category: directCategory, name: dm1, value: 'true'};
@@ -39,6 +44,7 @@ describe('Selectors.Preferences', () => {
 
     const myPreferences = {};
     myPreferences[`${category1}--${name1}`] = pref1;
+    myPreferences[`${category2}--${name2}`] = pref2;
     myPreferences[`${directCategory}--${dm1}`] = dmPref1;
     myPreferences[`${directCategory}--${dm2}`] = dmPref2;
     myPreferences[`${groupCategory}--${gp1}`] = prefGp1;
@@ -49,20 +55,90 @@ describe('Selectors.Preferences', () => {
     const testState = deepFreezeAndThrowOnMutation({
         entities: {
             users: {
-                currentUserId
+                currentUserId,
             },
             preferences: {
-                myPreferences
-            }
-        }
+                myPreferences,
+            },
+        },
     });
 
-    it('get preference', () => {
-        assert.deepEqual(Selectors.get(testState, category1, name1), value1);
+    describe('get preference', () => {
+        it('should return the requested value', () => {
+            assert.deepEqual(Selectors.get(testState, category1, name1), 'true');
+        });
+
+        describe('should fallback to the default', () => {
+            it('if name unknown', () => {
+                assert.deepEqual(Selectors.get(testState, category1, 'unknown name'), '');
+            });
+
+            it('if category unknown', () => {
+                assert.deepEqual(Selectors.get(testState, 'unknown category', name1), '');
+            });
+        });
+
+        describe('should fallback to the overridden default', () => {
+            it('if name unknown', () => {
+                assert.deepEqual(Selectors.get(testState, category1, 'unknown name', 'fallback'), 'fallback');
+            });
+
+            it('if category unknown', () => {
+                assert.deepEqual(Selectors.get(testState, 'unknown category', name1, 'fallback'), 'fallback');
+            });
+        });
     });
 
-    it('get bool preference', () => {
-        assert.deepEqual(Selectors.getBool(testState, category1, name1), value1 === 'true');
+    describe('get bool preference', () => {
+        it('should return the requested value', () => {
+            assert.deepEqual(Selectors.getBool(testState, category1, name1), value1 === 'true');
+        });
+
+        describe('should fallback to the default', () => {
+            it('if name unknown', () => {
+                assert.deepEqual(Selectors.getBool(testState, category1, 'unknown name'), false);
+            });
+
+            it('if category unknown', () => {
+                assert.deepEqual(Selectors.getBool(testState, 'unknown category', name1), false);
+            });
+        });
+
+        describe('should fallback to the overridden default', () => {
+            it('if name unknown', () => {
+                assert.deepEqual(Selectors.getBool(testState, category1, 'unknown name', true), true);
+            });
+
+            it('if category unknown', () => {
+                assert.deepEqual(Selectors.getBool(testState, 'unknown category', name1, true), true);
+            });
+        });
+    });
+
+    describe('get int preference', () => {
+        it('should return the requested value', () => {
+            assert.deepEqual(Selectors.getInt(testState, category2, name2), value2);
+        });
+
+        describe('should fallback to the default', () => {
+            it('if name unknown', () => {
+                assert.deepEqual(Selectors.getInt(testState, category2, 'unknown name'), 0);
+            });
+
+            it('if category unknown', () => {
+                assert.deepEqual(Selectors.getInt(testState, 'unknown category', name2), 0);
+            });
+        });
+
+        describe('should fallback to the overridden default', () => {
+            it('if name unknown', () => {
+                assert.deepEqual(Selectors.getInt(testState, category2, 'unknown name', 100), 100);
+            });
+
+            it('if category unknown', () => {
+                assert.deepEqual(Selectors.getInt(testState, 'unknown category', name2, 100), 100);
+            });
+        });
     });
 
     it('get preferences by category', () => {
@@ -84,14 +160,14 @@ describe('Selectors.Preferences', () => {
                 Selectors.getTeammateNameDisplaySetting({
                     entities: {
                         general: {
-                            config: {}
+                            config: {},
                         },
                         preferences: {
                             myPreferences: {
-                                [`${Preferences.CATEGORY_DISPLAY_SETTINGS}--${Preferences.NAME_NAME_FORMAT}`]: General.TEAMMATE_NAME_DISPLAY.SHOW_FULLNAME
-                            }
-                        }
-                    }
+                                [`${Preferences.CATEGORY_DISPLAY_SETTINGS}--${Preferences.NAME_NAME_FORMAT}`]: General.TEAMMATE_NAME_DISPLAY.SHOW_FULLNAME,
+                            },
+                        },
+                    },
                 }),
                 General.TEAMMATE_NAME_DISPLAY.SHOW_NICKNAME_FULLNAME
             );
@@ -103,15 +179,15 @@ describe('Selectors.Preferences', () => {
                     entities: {
                         general: {
                             config: {
-                                TeammateNameDisplay: General.TEAMMATE_NAME_DISPLAY.SHOW_NICKNAME_FULLNAME
-                            }
+                                TeammateNameDisplay: General.TEAMMATE_NAME_DISPLAY.SHOW_NICKNAME_FULLNAME,
+                            },
                         },
                         preferences: {
                             myPreferences: {
-                                [`${Preferences.CATEGORY_DISPLAY_SETTINGS}--${Preferences.NAME_NAME_FORMAT}`]: General.TEAMMATE_NAME_DISPLAY.SHOW_FULLNAME
-                            }
-                        }
-                    }
+                                [`${Preferences.CATEGORY_DISPLAY_SETTINGS}--${Preferences.NAME_NAME_FORMAT}`]: General.TEAMMATE_NAME_DISPLAY.SHOW_FULLNAME,
+                            },
+                        },
+                    },
                 }),
                 General.TEAMMATE_NAME_DISPLAY.SHOW_NICKNAME_FULLNAME
             );
@@ -123,13 +199,13 @@ describe('Selectors.Preferences', () => {
                     entities: {
                         general: {
                             config: {
-                                TeammateNameDisplay: General.TEAMMATE_NAME_DISPLAY.SHOW_NICKNAME_FULLNAME
-                            }
+                                TeammateNameDisplay: General.TEAMMATE_NAME_DISPLAY.SHOW_NICKNAME_FULLNAME,
+                            },
                         },
                         preferences: {
-                            myPreferences: {}
-                        }
-                    }
+                            myPreferences: {},
+                        },
+                    },
                 }),
                 General.TEAMMATE_NAME_DISPLAY.SHOW_NICKNAME_FULLNAME
             );
@@ -142,14 +218,19 @@ describe('Selectors.Preferences', () => {
 
             assert.equal(Selectors.getTheme({
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             }), Preferences.THEMES.default);
         });
 
@@ -159,17 +240,22 @@ describe('Selectors.Preferences', () => {
 
             assert.equal(Selectors.getTheme({
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
                             [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme)
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                            },
+                        },
+                    },
+                },
             }).sidebarBg, theme.sidebarBg);
         });
 
@@ -180,24 +266,75 @@ describe('Selectors.Preferences', () => {
 
             assert.deepEqual(Selectors.getTheme({
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
                             [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify({})
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify({}),
                             },
                             [getPreferenceKey(Preferences.CATEGORY_THEME, currentTeamId)]: {
-                                category: Preferences.CATEGORY_THEME, name: currentTeamId, value: JSON.stringify(theme)
+                                category: Preferences.CATEGORY_THEME, name: currentTeamId, value: JSON.stringify(theme),
                             },
                             [getPreferenceKey(Preferences.CATEGORY_THEME, otherTeamId)]: {
-                                category: Preferences.CATEGORY_THEME, name: otherTeamId, value: JSON.stringify({})
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: otherTeamId, value: JSON.stringify({}),
+                            },
+                        },
+                    },
+                },
             }).sidebarBg, theme.sidebarBg);
+        });
+
+        it('mentionBj backwards compatability theme', () => {
+            const currentTeamId = '1234';
+            const theme = {mentionBj: '#ff0000'};
+
+            assert.equal(Selectors.getTheme({
+                entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
+                    teams: {
+                        currentTeamId,
+                    },
+                    preferences: {
+                        myPreferences: {
+                            [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                            },
+                        },
+                    },
+                },
+            }).mentionBg, theme.mentionBj);
+
+            theme.mentionBg = '#ff0001';
+            assert.equal(Selectors.getTheme({
+                entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
+                    teams: {
+                        currentTeamId,
+                    },
+                    preferences: {
+                        myPreferences: {
+                            [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                            },
+                        },
+                    },
+                },
+            }).mentionBg, theme.mentionBg);
         });
 
         it('memoization', () => {
@@ -206,23 +343,28 @@ describe('Selectors.Preferences', () => {
 
             let state = {
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
                             [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify({})
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify({}),
                             },
                             [getPreferenceKey(Preferences.CATEGORY_THEME, currentTeamId)]: {
-                                category: Preferences.CATEGORY_THEME, name: currentTeamId, value: JSON.stringify({sidebarBg: '#ff0000'})
+                                category: Preferences.CATEGORY_THEME, name: currentTeamId, value: JSON.stringify({sidebarBg: '#ff0000'}),
                             },
                             [getPreferenceKey(Preferences.CATEGORY_THEME, otherTeamId)]: {
-                                category: Preferences.CATEGORY_THEME, name: otherTeamId, value: JSON.stringify({})
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: otherTeamId, value: JSON.stringify({}),
+                            },
+                        },
+                    },
+                },
             };
 
             const before = Selectors.getTheme(state);
@@ -238,11 +380,11 @@ describe('Selectors.Preferences', () => {
                         myPreferences: {
                             ...state.entities.preferences.myPreferences,
                             somethingUnrelated: {
-                                category: 'somethingUnrelated', name: '', value: JSON.stringify({})
-                            }
-                        }
-                    }
-                }
+                                category: 'somethingUnrelated', name: '', value: JSON.stringify({}),
+                            },
+                        },
+                    },
+                },
             };
 
             assert.equal(before, Selectors.getTheme(state));
@@ -256,11 +398,11 @@ describe('Selectors.Preferences', () => {
                         myPreferences: {
                             ...state.entities.preferences.myPreferences,
                             [getPreferenceKey(Preferences.CATEGORY_THEME, currentTeamId)]: {
-                                category: Preferences.CATEGORY_THEME, name: currentTeamId, value: JSON.stringify({sidebarBg: '#0000ff'})
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: currentTeamId, value: JSON.stringify({sidebarBg: '#0000ff'}),
+                            },
+                        },
+                    },
+                },
             };
 
             assert.notEqual(before, Selectors.getTheme(state));
@@ -273,17 +415,22 @@ describe('Selectors.Preferences', () => {
 
             assert.deepEqual(Selectors.getTheme({
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
                             [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme)
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                            },
+                        },
+                    },
+                },
             }).sidebarBg, theme.sidebarBg.toLowerCase());
         });
 
@@ -293,17 +440,22 @@ describe('Selectors.Preferences', () => {
 
             assert.equal(Selectors.getTheme({
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
                             [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme)
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                            },
+                        },
+                    },
+                },
             }).mentionHighlightLink, Preferences.THEMES.default.mentionHighlightLink);
         });
 
@@ -311,45 +463,114 @@ describe('Selectors.Preferences', () => {
             const currentTeamId = '1234';
             const theme = {
                 type: Preferences.THEMES.mattermostDark.type,
-                sidebarBg: '#ff0000'
+                sidebarBg: '#ff0000',
             };
 
             assert.equal(Selectors.getTheme({
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
                             [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme)
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                            },
+                        },
+                    },
+                },
             }).sidebarText, Preferences.THEMES.mattermostDark.sidebarText);
         });
 
         it('non-default system theme', () => {
             const currentTeamId = '1234';
             const theme = {
-                type: Preferences.THEMES.windows10.type
+                type: Preferences.THEMES.windows10.type,
             };
 
             assert.equal(Selectors.getTheme({
                 entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'default',
+                        },
+                    },
                     teams: {
-                        currentTeamId
+                        currentTeamId,
                     },
                     preferences: {
                         myPreferences: {
                             [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme)
-                            }
-                        }
-                    }
-                }
+                                category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                            },
+                        },
+                    },
+                },
             }).codeTheme, Preferences.THEMES.windows10.codeTheme);
+        });
+
+        it('should return the server-configured theme by default', () => {
+            assert.equal(Selectors.getTheme({
+                entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'mattermostDark',
+                        },
+                    },
+                    teams: {
+                        currentTeamId: null,
+                    },
+                    preferences: {
+                        myPreferences: {
+                            [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: null,
+                        },
+                    },
+                },
+            }).codeTheme, Preferences.THEMES.mattermostDark.codeTheme);
+
+            // Opposite case
+            assert.notEqual(Selectors.getTheme({
+                entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'windows10',
+                        },
+                    },
+                    teams: {
+                        currentTeamId: null,
+                    },
+                    preferences: {
+                        myPreferences: {
+                            [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: null,
+                        },
+                    },
+                },
+            }).codeTheme, Preferences.THEMES.mattermostDark.codeTheme);
+        });
+
+        it('returns the "default" theme if the server-configured value is not present', () => {
+            assert.equal(Selectors.getTheme({
+                entities: {
+                    general: {
+                        config: {
+                            DefaultTheme: 'fakedoesnotexist',
+                        },
+                    },
+                    teams: {
+                        currentTeamId: null,
+                    },
+                    preferences: {
+                        myPreferences: {
+                            [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: null,
+                        },
+                    },
+                },
+            }).codeTheme, Preferences.THEMES.default.codeTheme);
         });
     });
 
@@ -359,33 +580,38 @@ describe('Selectors.Preferences', () => {
 
         const state = {
             entities: {
+                general: {
+                    config: {
+                        DefaultTheme: 'default',
+                    },
+                },
                 teams: {
-                    currentTeamId
+                    currentTeamId,
                 },
                 preferences: {
                     myPreferences: {
                         [getPreferenceKey(Preferences.CATEGORY_THEME, '')]: {
-                            category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme)
-                        }
-                    }
-                }
-            }
+                            category: Preferences.CATEGORY_THEME, name: '', value: JSON.stringify(theme),
+                        },
+                    },
+                },
+            },
         };
 
         function testStyleFunction(myTheme) {
             return {
                 container: {
                     backgroundColor: myTheme.themeColor,
-                    height: 100
-                }
+                    height: 100,
+                },
             };
         }
 
         const expected = {
             container: {
                 backgroundColor: theme.themeColor,
-                height: 100
-            }
+                height: 100,
+            },
         };
 
         const getStyleFromTheme = Selectors.makeGetStyleFromTheme();

@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {ErrorTypes} from 'action_types';
 
@@ -17,7 +17,7 @@ export default (state = [], action) => {
         nextState.push({
             displayable,
             error,
-            date: new Date(Date.now()).toUTCString()
+            date: new Date(Date.now()).toUTCString(),
         });
 
         return nextState;

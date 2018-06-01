@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 
@@ -13,16 +13,22 @@ describe('Selectors.Teams', () => {
     const team2 = TestHelper.fakeTeamWithId();
     const team3 = TestHelper.fakeTeamWithId();
     const team4 = TestHelper.fakeTeamWithId();
+    const team5 = TestHelper.fakeTeamWithId();
 
     const teams = {};
     teams[team1.id] = team1;
     teams[team2.id] = team2;
     teams[team3.id] = team3;
     teams[team4.id] = team4;
+    teams[team5.id] = team5;
     team1.display_name = 'Marketeam';
     team2.display_name = 'Core Team';
     team3.allow_open_invite = true;
     team4.allow_open_invite = true;
+    team3.display_name = 'Team AA';
+    team4.display_name = 'aa-team';
+    team5.delete_at = 10;
+    team5.allow_open_invite = true;
 
     const user = TestHelper.fakeUserWithId();
     const user2 = TestHelper.fakeUserWithId();
@@ -45,19 +51,19 @@ describe('Selectors.Teams', () => {
         entities: {
             users: {
                 currentUserId: user.id,
-                profiles
+                profiles,
             },
             teams: {
                 currentTeamId: team1.id,
                 teams,
                 myMembers,
-                membersInTeam
-            }
-        }
+                membersInTeam,
+            },
+        },
     });
 
     it('getTeamsList', () => {
-        assert.deepEqual(Selectors.getTeamsList(testState), [team1, team2, team3, team4]);
+        assert.deepEqual(Selectors.getTeamsList(testState), [team1, team2, team3, team4, team5]);
     });
 
     it('getMyTeams', () => {
@@ -79,6 +85,13 @@ describe('Selectors.Teams', () => {
         assert.deepEqual(Selectors.getJoinableTeams(testState), openTeams);
     });
 
+    it('getSortedJoinableTeams', () => {
+        const openTeams = [team4, team3];
+        const joinableTeams = Selectors.getSortedJoinableTeams(testState);
+        assert.strictEqual(joinableTeams[0], openTeams[0]);
+        assert.strictEqual(joinableTeams[1], openTeams[1]);
+    });
+
     it('isCurrentUserCurrentTeamAdmin', () => {
         assert.deepEqual(Selectors.isCurrentUserCurrentTeamAdmin(testState), false);
     });
@@ -98,11 +111,11 @@ describe('Selectors.Teams', () => {
                         ...testState.entities.teams.teams,
                         [team3.id]: {
                             ...team3,
-                            allow_open_invite: false
-                        }
-                    }
-                }
-            }
+                            allow_open_invite: false,
+                        },
+                    },
+                },
+            },
         };
 
         const fromOriginalState = Selectors.getTeam(testState, team1.id);
@@ -121,11 +134,11 @@ describe('Selectors.Teams', () => {
                         ...testState.entities.teams.teams,
                         [team3.id]: {
                             ...team3,
-                            display_name: 'Welcome'
-                        }
-                    }
-                }
-            }
+                            display_name: 'Welcome',
+                        },
+                    },
+                },
+            },
         };
 
         const fromOriginalState = Selectors.getJoinableTeamIds(testState);
@@ -144,11 +157,11 @@ describe('Selectors.Teams', () => {
                         ...testState.entities.teams.teams,
                         [team3.id]: {
                             ...team3,
-                            display_name: 'Welcome'
-                        }
-                    }
-                }
-            }
+                            display_name: 'Welcome',
+                        },
+                    },
+                },
+            },
         };
 
         const updateState = {
@@ -161,11 +174,11 @@ describe('Selectors.Teams', () => {
                         ...testState.entities.teams.teams,
                         [team2.id]: {
                             ...team2,
-                            display_name: 'Yankz'
-                        }
-                    }
-                }
-            }
+                            display_name: 'Yankz',
+                        },
+                    },
+                },
+            },
         };
 
         const fromOriginalState = Selectors.getMySortedTeamIds(testState);
@@ -190,11 +203,11 @@ describe('Selectors.Teams', () => {
                         ...testState.entities.teams.teams,
                         [team3.id]: {
                             ...team3,
-                            display_name: 'Welcome'
-                        }
-                    }
-                }
-            }
+                            display_name: 'Welcome',
+                        },
+                    },
+                },
+            },
         };
 
         const updateState = {
@@ -205,10 +218,10 @@ describe('Selectors.Teams', () => {
                     ...testState.entities.teams,
                     myMembers: {
                         ...testState.entities.teams.myMembers,
-                        [team3.id]: {team_id: team3.id, user_id: user.id, roles: General.TEAM_USER_ROLE}
-                    }
-                }
-            }
+                        [team3.id]: {team_id: team3.id, user_id: user.id, roles: General.TEAM_USER_ROLE},
+                    },
+                },
+            },
         };
 
         const fromOriginalState = Selectors.getMyTeamsCount(testState);

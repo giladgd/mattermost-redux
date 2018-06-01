@@ -1,9 +1,10 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {combineReducers} from 'redux';
 import {AdminTypes, UserTypes} from 'action_types';
 import {Stats} from 'constants';
+import PluginState from 'constants/plugins';
 
 function logs(state = [], action) {
     switch (action.type) {
@@ -19,10 +20,9 @@ function logs(state = [], action) {
 }
 
 function audits(state = {}, action) {
-    const nextState = {...state};
-
     switch (action.type) {
     case AdminTypes.RECEIVED_AUDITS: {
+        const nextState = {...state};
         for (const audit of action.data) {
             nextState[audit.id] = audit;
         }
@@ -49,15 +49,28 @@ function config(state = {}, action) {
     }
 }
 
-function complianceReports(state = {}, action) {
-    const nextState = {...state};
+function environmentConfig(state = {}, action) {
+    switch (action.type) {
+    case AdminTypes.RECEIVED_ENVIRONMENT_CONFIG: {
+        return action.data;
+    }
+    case UserTypes.LOGOUT_SUCCESS:
+        return {};
 
+    default:
+        return state;
+    }
+}
+
+function complianceReports(state = {}, action) {
     switch (action.type) {
     case AdminTypes.RECEIVED_COMPLIANCE_REPORT: {
+        const nextState = {...state};
         nextState[action.data.id] = action.data;
         return nextState;
     }
     case AdminTypes.RECEIVED_COMPLIANCE_REPORTS: {
+        const nextState = {...state};
         for (const report of action.data) {
             nextState[report.id] = report;
         }
@@ -126,6 +139,9 @@ function convertAnalyticsRowsToStats(data, name) {
             break;
         case 'unique_user_count':
             key = Stats.TOTAL_USERS;
+            break;
+        case 'inactive_user_count':
+            key = Stats.TOTAL_INACTIVE_USERS;
             break;
         case 'team_count':
             key = Stats.TOTAL_TEAMS;
@@ -207,12 +223,55 @@ function teamAnalytics(state = {}, action) {
 function userAccessTokens(state = {}, action) {
     switch (action.type) {
     case AdminTypes.RECEIVED_USER_ACCESS_TOKEN: {
+        return {...state, [action.data.id]: action.data};
+    }
+    case AdminTypes.RECEIVED_USER_ACCESS_TOKENS_FOR_USER: {
+        const nextState = {};
+
+        for (const uat of action.data) {
+            nextState[uat.id] = uat;
+        }
+
+        return {...state, ...nextState};
+    }
+    case AdminTypes.RECEIVED_USER_ACCESS_TOKENS: {
+        const nextState = {};
+
+        for (const uat of action.data) {
+            nextState[uat.id] = uat;
+        }
+
+        return {...state, ...nextState};
+    }
+    case UserTypes.REVOKED_USER_ACCESS_TOKEN: {
+        const nextState = {...state};
+        Reflect.deleteProperty(nextState, action.data);
+        return {...nextState};
+    }
+    case UserTypes.ENABLED_USER_ACCESS_TOKEN: {
+        const token = {...state[action.data], is_active: true};
+        return {...state, [action.data]: token};
+    }
+    case UserTypes.DISABLED_USER_ACCESS_TOKEN: {
+        const token = {...state[action.data], is_active: false};
+        return {...state, [action.data]: token};
+    }
+    case UserTypes.LOGOUT_SUCCESS:
+        return {};
+    default:
+        return state;
+    }
+}
+
+function userAccessTokensForUser(state = {}, action) {
+    switch (action.type) {
+    case AdminTypes.RECEIVED_USER_ACCESS_TOKEN: {
         const nextUserState = {...(state[action.data.user_id] || {})};
         nextUserState[action.data.id] = action.data;
 
         return {...state, [action.data.user_id]: nextUserState};
     }
-    case AdminTypes.RECEIVED_USER_ACCESS_TOKENS: {
+    case AdminTypes.RECEIVED_USER_ACCESS_TOKENS_FOR_USER: {
         const nextUserState = {...(state[action.userId] || {})};
 
         for (const uat of action.data) {
@@ -220,6 +279,16 @@ function userAccessTokens(state = {}, action) {
         }
 
         return {...state, [action.userId]: nextUserState};
+    }
+    case AdminTypes.RECEIVED_USER_ACCESS_TOKENS: {
+        const nextUserState = {};
+
+        for (const uat of action.data) {
+            nextUserState[uat.user_id] = nextUserState[uat.user_id] || {};
+            nextUserState[uat.user_id][uat.id] = uat;
+        }
+
+        return {...state, ...nextUserState};
     }
     case UserTypes.REVOKED_USER_ACCESS_TOKEN: {
         const userIds = Object.keys(state);
@@ -271,14 +340,14 @@ function userAccessTokens(state = {}, action) {
 }
 
 function plugins(state = {}, action) {
-    const nextState = {...state};
-
     switch (action.type) {
     case AdminTypes.RECEIVED_PLUGIN: {
+        const nextState = {...state};
         nextState[action.data.id] = action.data;
         return nextState;
     }
     case AdminTypes.RECEIVED_PLUGINS: {
+        const nextState = {...state};
         const activePlugins = action.data.active;
         for (const plugin of activePlugins) {
             nextState[plugin.id] = {...plugin, active: true};
@@ -291,10 +360,12 @@ function plugins(state = {}, action) {
         return nextState;
     }
     case AdminTypes.REMOVED_PLUGIN: {
+        const nextState = {...state};
         Reflect.deleteProperty(nextState, action.data);
         return nextState;
     }
     case AdminTypes.ACTIVATED_PLUGIN: {
+        const nextState = {...state};
         const plugin = nextState[action.data];
         if (plugin && !plugin.active) {
             nextState[action.data] = {...plugin, active: true};
@@ -303,6 +374,7 @@ function plugins(state = {}, action) {
         return state;
     }
     case AdminTypes.DEACTIVATED_PLUGIN: {
+        const nextState = {...state};
         const plugin = nextState[action.data];
         if (plugin && plugin.active) {
             nextState[action.data] = {...plugin, active: false};
@@ -310,6 +382,111 @@ function plugins(state = {}, action) {
         }
         return state;
     }
+    case UserTypes.LOGOUT_SUCCESS:
+        return {};
+
+    default:
+        return state;
+    }
+}
+
+function pluginStatuses(state = {}, action) {
+    switch (action.type) {
+    case AdminTypes.RECEIVED_PLUGIN_STATUSES: {
+        const nextState = {};
+
+        for (const plugin of (action.data || [])) {
+            const id = plugin.plugin_id;
+
+            // The plugin may be in different states across the cluster. Pick the highest one to
+            // surface an error.
+            const pluginState = Math.max((nextState[id] && nextState[id].state) || 0, plugin.state);
+
+            const instances = [
+                ...((nextState[id] && nextState[id].instances) || []),
+                {
+                    cluster_id: plugin.cluster_id,
+                    version: plugin.version,
+                    state: plugin.state,
+                },
+            ];
+
+            nextState[id] = {
+                id,
+                name: (nextState[id] && nextState[id].name) || plugin.name,
+                description: (nextState[id] && nextState[id].description) || plugin.description,
+                version: (nextState[id] && nextState[id].version) || plugin.version,
+                is_prepackaged: (nextState[id] && nextState[id].is_prepackaged) || plugin.is_prepackaged,
+                active: pluginState > 0,
+                state: pluginState,
+                instances,
+            };
+        }
+
+        return nextState;
+    }
+
+    case AdminTypes.RECEIVED_PLUGIN: {
+        const plugin = action.data;
+        const existingPlugin = state[plugin.id] || {instances: []};
+
+        return {
+            ...state,
+            [plugin.id]: {
+                ...existingPlugin,
+                id: plugin.id,
+                name: plugin.name,
+                description: plugin.description,
+                version: plugin.version,
+                is_prepackaged: false,
+                active: plugin.active,
+                state: PluginState.PLUGIN_STATE_NOT_RUNNING,
+            },
+        };
+    }
+
+    case AdminTypes.ACTIVATE_PLUGIN_REQUEST: {
+        const pluginId = action.data;
+        if (!state[pluginId]) {
+            return state;
+        }
+
+        return {
+            ...state,
+            [pluginId]: {
+                ...state[pluginId],
+                state: PluginState.PLUGIN_STATE_STARTING,
+            },
+        };
+    }
+
+    case AdminTypes.DEACTIVATE_PLUGIN_REQUEST: {
+        const pluginId = action.data;
+        if (!state[pluginId]) {
+            return state;
+        }
+
+        return {
+            ...state,
+            [pluginId]: {
+                ...state[pluginId],
+                state: PluginState.PLUGIN_STATE_STOPPING,
+            },
+        };
+    }
+
+    case AdminTypes.REMOVED_PLUGIN: {
+        const pluginId = action.data;
+        if (!state[pluginId]) {
+            return state;
+        }
+
+        const nextState = {...state};
+        Reflect.deleteProperty(nextState, pluginId);
+
+        return nextState;
+    }
+
     case UserTypes.LOGOUT_SUCCESS:
         return {};
 
@@ -329,6 +506,9 @@ export default combineReducers({
     // object representing the server configuration
     config,
 
+    // object representing which fields of the server configuration were set through the environment config
+    environmentConfig,
+
     // object where every key is a report id and has an object with report details
     complianceReports,
 
@@ -344,10 +524,16 @@ export default combineReducers({
     // object with team ids as keys and analytics objects as values
     teamAnalytics,
 
-    // object with user ids as keys and objects, with token ids as keys, as values
+    // object with user ids as keys and objects, with token ids as keys, and
+    // user access tokens as values without actual token
+    userAccessTokensByUser: userAccessTokensForUser,
+
+    // object with token ids as keys, and user access tokens as values without actual token
     userAccessTokens,
 
     // object with plugin ids as keys and objects representing plugin manifests as values
-    plugins
-});
+    plugins,
 
+    // object with plugin ids as keys and objects representing plugin statuses across the cluster
+    pluginStatuses,
+});

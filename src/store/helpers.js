@@ -1,9 +1,9 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 export const defaultOptions = {
     additionalMiddleware: [],
-    enableBuffer: true
+    enableBuffer: true,
 };
 
 export const offlineConfig = {
@@ -22,5 +22,5 @@ export const offlineConfig = {
         }
 
         return retries > 10;
-    }
+    },
 };

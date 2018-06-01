@@ -1,5 +1,5 @@
-// Copyright (c) 2016 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import fs from 'fs';
 import assert from 'assert';
@@ -28,7 +28,7 @@ describe('Actions.Websocket', () => {
         mockServer = new Server(connUrl);
         const webSocketConnector = TestHelper.isLiveServer() ? require('ws') : MockWebSocket;
         return await Actions.init(
-            'ios',
+            'web',
             null,
             null,
             webSocketConnector
@@ -290,7 +290,7 @@ describe('Actions.Websocket', () => {
 
             await GeneralActions.setStoreFromLocalData({
                 url: Client4.getUrl(),
-                token: Client4.getToken()
+                token: Client4.getToken(),
             })(store.dispatch, store.getState);
             await TeamActions.selectTeam(team)(store.dispatch, store.getState);
             await ChannelActions.selectChannel(channel.id)(store.dispatch, store.getState);
@@ -326,7 +326,7 @@ describe('Actions.Websocket', () => {
             )(store.dispatch, store.getState);
         } else {
             user = {...TestHelper.fakeUser(), id: TestHelper.generateId()};
-            store.dispatch({type: UserTypes.RECEIVED_PROFILE_IN_CHANNEL, id: TestHelper.basicChannel.id, data: {user_id: user.id}});
+            store.dispatch({type: UserTypes.RECEIVED_PROFILE_IN_CHANNEL, data: {id: TestHelper.basicChannel.id, user_id: user.id}});
             mockServer.send(JSON.stringify({event: WebsocketEvents.USER_ADDED, data: {team_id: TestHelper.basicTeam.id, user_id: user.id}, broadcast: {omit_users: null, user_id: '', channel_id: TestHelper.basicChannel.id, team_id: ''}, seq: 42}));
         }
 
@@ -358,7 +358,7 @@ describe('Actions.Websocket', () => {
             )(store.dispatch, store.getState);
         } else {
             user = {...TestHelper.fakeUser(), id: TestHelper.generateId()};
-            store.dispatch({type: UserTypes.RECEIVED_PROFILE_NOT_IN_CHANNEL, id: TestHelper.basicChannel.id, data: {user_id: user.id}});
+            store.dispatch({type: UserTypes.RECEIVED_PROFILE_NOT_IN_CHANNEL, data: {id: TestHelper.basicChannel.id, user_id: user.id}});
             mockServer.send(JSON.stringify({event: WebsocketEvents.USER_REMOVED, data: {remover_id: TestHelper.basicUser.id, user_id: user.id}, broadcast: {omit_users: null, user_id: '', channel_id: TestHelper.basicChannel.id, team_id: ''}, seq: 42}));
         }
 
@@ -457,6 +457,11 @@ describe('Actions.Websocket', () => {
             } else {
                 store.dispatch({type: ChannelTypes.RECEIVED_CHANNEL, data: {id: TestHelper.generateId(), name: General.DEFAULT_CHANNEL, team_id: TestHelper.basicTeam.id}});
                 store.dispatch({type: ChannelTypes.RECEIVED_CHANNEL, data: TestHelper.basicChannel});
+
+                nock(Client4.getUserRoute('me')).
+                    get(`/teams/${TestHelper.basicTeam.id}/channels/members`).
+                    reply(201, [{user_id: TestHelper.basicUser.id, channel_id: TestHelper.basicChannel.id}]);
+
                 mockServer.send(JSON.stringify({event: WebsocketEvents.CHANNEL_DELETED, data: {channel_id: TestHelper.basicChannel.id}, broadcast: {omit_users: null, user_id: '', channel_id: '', team_id: TestHelper.basicTeam.id}, seq: 68}));
             }
 
@@ -489,6 +494,10 @@ describe('Actions.Websocket', () => {
                 await client.createDirectChannel([user.id, TestHelper.basicUser.id]);
             } else {
                 const channel = {id: TestHelper.generateId(), name: TestHelper.basicUser.id + '__' + TestHelper.generateId(), type: 'D'};
+
+                nock(Client4.getChannelsRoute()).
+                    get(`/${channel.id}/members/me`).
+                    reply(201, {user_id: TestHelper.basicUser.id, channel_id: channel.id});
 
                 mockServer.send(JSON.stringify({event: WebsocketEvents.DIRECT_ADDED, data: {teammate_id: 'btaxe5msnpnqurayosn5p8twuw'}, broadcast: {omit_users: null, user_id: '', channel_id: channel.id, team_id: ''}, seq: 2}));
                 store.dispatch({type: ChannelTypes.RECEIVED_CHANNEL, data: channel});
@@ -567,7 +576,7 @@ describe('Actions.Websocket', () => {
                 const testImageData = fs.createReadStream('test/assets/images/test.png');
                 created = await Client4.createCustomEmoji({
                     name: TestHelper.generateId(),
-                    creator_id: TestHelper.basicUser.id
+                    creator_id: TestHelper.basicUser.id,
                 }, testImageData);
             } else {
                 created = {id: '1mmgakhhupfgfm8oug6pooc5no'};
@@ -581,6 +590,51 @@ describe('Actions.Websocket', () => {
             const emojis = state.entities.emojis.customEmoji;
             assert.ok(emojis);
             assert.ok(emojis[created.id]);
+            done();
+        }
+
+        test();
+    });
+
+    it('handle license changed', (done) => {
+        async function test() {
+            if (TestHelper.isLiveServer()) {
+                // No live server version implemented for this test case.
+                this.skip();
+            } else {
+                mockServer.send(JSON.stringify({event: WebsocketEvents.LICENSE_CHANGED, data: {license: {IsLicensed: 'true'}}}));
+            }
+
+            await TestHelper.wait(200);
+
+            const state = store.getState();
+
+            const license = state.entities.general.license;
+            assert.ok(license);
+            assert.ok(license.IsLicensed);
+            done();
+        }
+
+        test();
+    });
+
+    it('handle config changed', (done) => {
+        async function test() {
+            if (TestHelper.isLiveServer()) {
+                // No live server version implemented for this test case.
+                this.skip();
+            } else {
+                mockServer.send(JSON.stringify({event: WebsocketEvents.CONFIG_CHANGED, data: {config: {EnableCustomEmoji: 'true', EnableLinkPreviews: 'false'}}}));
+            }
+
+            await TestHelper.wait(200);
+
+            const state = store.getState();
+
+            const config = state.entities.general.config;
+            assert.ok(config);
+            assert.ok(config.EnableCustomEmoji === 'true');
+            assert.ok(config.EnableLinkPreviews === 'false');
             done();
         }
 

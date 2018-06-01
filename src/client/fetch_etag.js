@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 const data = {};
 const etags = {};
@@ -15,22 +15,22 @@ export default (url = null, options = {headers: {}}) => {
         }
 
         return fetch(url, options).
-        then((response) => {
-            if (response.status === 304) {
-                return cachedResponse.clone();
-            }
-
-            if (response.status === 200) {
-                const responseEtag = response.headers.get('Etag');
-
-                if (responseEtag) {
-                    data[`${url}${responseEtag}`] = response.clone();
-                    etags[url] = responseEtag;
+            then((response) => {
+                if (response.status === 304) {
+                    return cachedResponse.clone();
                 }
-            }
 
-            return response;
-        });
+                if (response.status === 200) {
+                    const responseEtag = response.headers.get('Etag');
+
+                    if (responseEtag) {
+                        data[`${url}${responseEtag}`] = response.clone();
+                        etags[url] = responseEtag;
+                    }
+                }
+
+                return response;
+            });
     }
 
     // all other requests go straight to fetch

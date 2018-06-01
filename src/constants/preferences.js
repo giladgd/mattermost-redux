@@ -1,8 +1,10 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 export default {
     CATEGORY_CHANNEL_OPEN_TIME: 'channel_open_time',
+    CATEGORY_CHANNEL_APPROXIMATE_VIEW_TIME: 'channel_approximate_view_time',
     CATEGORY_DIRECT_CHANNEL_SHOW: 'direct_channel_show',
     CATEGORY_GROUP_CHANNEL_SHOW: 'group_channel_show',
     CATEGORY_FLAGGED_POST: 'flagged_post',
@@ -10,15 +12,28 @@ export default {
     CATEGORY_AUTO_RESET_MANUAL_STATUS: 'auto_reset_manual_status',
 
     CATEGORY_NOTIFICATIONS: 'notifications',
+
+    COMMENTS: 'comments',
+    COMMENTS_ANY: 'any',
+    COMMENTS_ROOT: 'root',
+    COMMENTS_NEVER: 'never',
+
+    EMAIL: 'email',
+
     EMAIL_INTERVAL: 'email_interval',
     INTERVAL_FIFTEEN_MINUTES: 15 * 60,
     INTERVAL_HOUR: 60 * 60,
     INTERVAL_IMMEDIATE: 30, // "immediate" is a 30 second interval
+    INTERVAL_NEVER: 0,
 
     CATEGORY_DISPLAY_SETTINGS: 'display_settings',
     NAME_NAME_FORMAT: 'name_format',
     DISPLAY_PREFER_NICKNAME: 'nickname_full_name',
     DISPLAY_PREFER_FULL_NAME: 'full_name',
+
+    MENTION_KEYS: 'mention_keys',
+
+    USE_MILITARY_TIME: 'use_military_time',
 
     CATEGORY_SIDEBAR_SETTINGS: 'sidebar_settings',
 
@@ -51,7 +66,7 @@ export default {
             errorTextColor: '#fd5960',
             mentionHighlightBg: '#ffe577',
             mentionHighlightLink: '#166de0',
-            codeTheme: 'github'
+            codeTheme: 'github',
         },
         organization: {
             type: 'Organization',
@@ -77,7 +92,7 @@ export default {
             errorTextColor: '#a94442',
             mentionHighlightBg: '#f3e197',
             mentionHighlightLink: '#2f81b7',
-            codeTheme: 'github'
+            codeTheme: 'github',
         },
         mattermostDark: {
             type: 'Mattermost Dark',
@@ -103,7 +118,7 @@ export default {
             errorTextColor: '#ff6461',
             mentionHighlightBg: '#984063',
             mentionHighlightLink: '#a4ffeb',
-            codeTheme: 'solarized-dark'
+            codeTheme: 'solarized-dark',
         },
         windows10: {
             type: 'Windows Dark',
@@ -129,7 +144,7 @@ export default {
             errorTextColor: '#ff6461',
             mentionHighlightBg: '#784098',
             mentionHighlightLink: '#a4ffeb',
-            codeTheme: 'monokai'
-        }
-    }
+            codeTheme: 'monokai',
+        },
+    },
 };

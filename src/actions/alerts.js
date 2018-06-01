@@ -1,14 +1,18 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import {AlertTypes} from 'action_types';
 import {Alerts} from 'constants';
 
-export function pushNotificationAlert(message) {
+import type {ActionFunc} from '../types/actions';
+import type {AlertType} from '../types/alerts';
+
+export function pushNotificationAlert(message: string): ActionFunc {
     return async (dispatch, getState) => {
-        const notificationAlert = {
+        const notificationAlert: AlertType = {
             type: Alerts.ALERT_NOTIFICATION,
-            message
+            message,
         };
 
         dispatch({type: AlertTypes.PUSH_ALERT, data: notificationAlert}, getState);
@@ -17,11 +21,11 @@ export function pushNotificationAlert(message) {
     };
 }
 
-export function pushDeveloperAlert(message) {
+export function pushDeveloperAlert(message: string): ActionFunc {
     return async (dispatch, getState) => {
-        const developerAlert = {
+        const developerAlert: AlertType = {
             type: Alerts.ALERT_DEVELOPER,
-            message
+            message,
         };
 
         dispatch({type: AlertTypes.PUSH_ALERT, data: developerAlert}, getState);
@@ -30,11 +34,11 @@ export function pushDeveloperAlert(message) {
     };
 }
 
-export function pushErrorAlert(message) {
+export function pushErrorAlert(message: string): ActionFunc {
     return async (dispatch, getState) => {
-        const errorAlert = {
+        const errorAlert: AlertType = {
             type: Alerts.ALERT_ERROR,
-            message
+            message,
         };
 
         dispatch({type: AlertTypes.PUSH_ALERT, data: errorAlert}, getState);
@@ -43,9 +47,9 @@ export function pushErrorAlert(message) {
     };
 }
 
-export function clearLatestAlert() {
+export function clearLatestAlert(): ActionFunc {
     return async (dispatch, getState) => {
-        dispatch({type: AlertTypes.CLEAR_ALERT}, getState);
+        dispatch({type: AlertTypes.CLEAR_ALERT, data: null}, getState);
 
         return {data: true};
     };

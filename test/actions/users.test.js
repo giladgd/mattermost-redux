@@ -1,5 +1,5 @@
-// Copyright (c) 2016 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 import nock from 'nock';
@@ -800,8 +800,8 @@ describe('Actions.Users', () => {
                     email: 'false',
                     first_name: 'false',
                     mention_keys: '',
-                    user_id: currentUser.id
-                }
+                    user_id: currentUser.id,
+                },
             });
 
         await Actions.updateMe({
@@ -811,12 +811,62 @@ describe('Actions.Users', () => {
                 email: 'false',
                 first_name: 'false',
                 mention_keys: '',
-                user_id: currentUser.id
-            }
+                user_id: currentUser.id,
+            },
         })(store.dispatch, store.getState);
 
         const updateRequest = store.getState().requests.users.updateMe;
         const {currentUserId, profiles} = store.getState().entities.users;
+        const updateNotifyProps = profiles[currentUserId].notify_props;
+
+        if (updateRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(updateRequest.error));
+        }
+
+        assert.equal(updateNotifyProps.comments, 'any');
+        assert.equal(updateNotifyProps.email, 'false');
+        assert.equal(updateNotifyProps.first_name, 'false');
+        assert.equal(updateNotifyProps.mention_keys, '');
+    });
+
+    it('patchUser', async () => {
+        TestHelper.mockLogin();
+        await Actions.login(TestHelper.basicUser.email, TestHelper.basicUser.password)(store.dispatch, store.getState);
+
+        const state = store.getState();
+        const currentUserId = state.entities.users.currentUserId;
+        const currentUser = state.entities.users.profiles[currentUserId];
+        const notifyProps = currentUser.notify_props;
+
+        nock(Client4.getUsersRoute()).
+            put(`/${currentUserId}/patch`).
+            query(true).
+            reply(200, {
+                ...currentUser,
+                notify_props: {
+                    ...notifyProps,
+                    comments: 'any',
+                    email: 'false',
+                    first_name: 'false',
+                    mention_keys: '',
+                    user_id: currentUser.id,
+                },
+            });
+
+        await Actions.patchUser({
+            id: currentUserId,
+            notify_props: {
+                ...notifyProps,
+                comments: 'any',
+                email: 'false',
+                first_name: 'false',
+                mention_keys: '',
+                user_id: currentUser.id,
+            },
+        })(store.dispatch, store.getState);
+
+        const updateRequest = store.getState().requests.users.updateUser;
+        const {profiles} = store.getState().entities.users;
         const updateNotifyProps = profiles[currentUserId].notify_props;
 
         if (updateRequest.status === RequestStatus.FAILURE) {
@@ -1159,7 +1209,7 @@ describe('Actions.Users', () => {
 
             const request = store.getState().requests.users.createUserAccessToken;
             const {myUserAccessTokens} = store.getState().entities.users;
-            const {userAccessTokens} = store.getState().entities.admin;
+            const {userAccessTokensByUser} = store.getState().entities.admin;
 
             if (request.status === RequestStatus.FAILURE) {
                 throw new Error(JSON.stringify(request.error));
@@ -1168,10 +1218,10 @@ describe('Actions.Users', () => {
             assert.ok(myUserAccessTokens);
             assert.ok(myUserAccessTokens[data.id]);
             assert.ok(!myUserAccessTokens[data.id].token);
-            assert.ok(userAccessTokens);
-            assert.ok(userAccessTokens[currentUserId]);
-            assert.ok(userAccessTokens[currentUserId][data.id]);
-            assert.ok(!userAccessTokens[currentUserId][data.id].token);
+            assert.ok(userAccessTokensByUser);
+            assert.ok(userAccessTokensByUser[currentUserId]);
+            assert.ok(userAccessTokensByUser[currentUserId][data.id]);
+            assert.ok(!userAccessTokensByUser[currentUserId][data.id].token);
             done();
         }
 
@@ -1198,7 +1248,7 @@ describe('Actions.Users', () => {
 
         const request = store.getState().requests.users.getUserAccessToken;
         const {myUserAccessTokens} = store.getState().entities.users;
-        const {userAccessTokens} = store.getState().entities.admin;
+        const {userAccessTokensByUser, userAccessTokens} = store.getState().entities.admin;
 
         if (request.status === RequestStatus.FAILURE) {
             throw new Error(JSON.stringify(request.error));
@@ -1207,10 +1257,52 @@ describe('Actions.Users', () => {
         assert.ok(myUserAccessTokens);
         assert.ok(myUserAccessTokens[data.id]);
         assert.ok(!myUserAccessTokens[data.id].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][data.id]);
+        assert.ok(!userAccessTokensByUser[currentUserId][data.id].token);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(userAccessTokens[currentUserId][data.id]);
-        assert.ok(!userAccessTokens[currentUserId][data.id].token);
+        assert.ok(userAccessTokens[data.id]);
+        assert.ok(!userAccessTokens[data.id].token);
+    });
+
+    it('getUserAccessTokens', async () => {
+        TestHelper.mockLogin();
+        await Actions.login(TestHelper.basicUser.email, 'password1')(store.dispatch, store.getState);
+
+        const currentUserId = store.getState().entities.users.currentUserId;
+
+        nock(Client4.getBaseRoute()).
+            post(`/users/${currentUserId}/tokens`).
+            reply(201, {id: 'someid', token: 'sometoken', description: 'test token', user_id: currentUserId});
+
+        const {data} = await Actions.createUserAccessToken(currentUserId, 'test token')(store.dispatch, store.getState);
+
+        nock(Client4.getBaseRoute()).
+            get('/users/tokens').
+            query(true).
+            reply(200, [{id: data.id, description: 'test token', user_id: currentUserId}]);
+
+        await Actions.getUserAccessTokens()(store.dispatch, store.getState);
+
+        const request = store.getState().requests.users.getUserAccessToken;
+        const {myUserAccessTokens} = store.getState().entities.users;
+        const {userAccessTokensByUser, userAccessTokens} = store.getState().entities.admin;
+
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(request.error));
+        }
+
+        assert.ok(myUserAccessTokens);
+        assert.ok(myUserAccessTokens[data.id]);
+        assert.ok(!myUserAccessTokens[data.id].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][data.id]);
+        assert.ok(!userAccessTokensByUser[currentUserId][data.id].token);
+        assert.ok(userAccessTokens);
+        assert.ok(userAccessTokens[data.id]);
+        assert.ok(!userAccessTokens[data.id].token);
     });
 
     it('getUserAccessTokensForUser', async () => {
@@ -1234,7 +1326,7 @@ describe('Actions.Users', () => {
 
         const request = store.getState().requests.users.getUserAccessToken;
         const {myUserAccessTokens} = store.getState().entities.users;
-        const {userAccessTokens} = store.getState().entities.admin;
+        const {userAccessTokensByUser, userAccessTokens} = store.getState().entities.admin;
 
         if (request.status === RequestStatus.FAILURE) {
             throw new Error(JSON.stringify(request.error));
@@ -1243,10 +1335,13 @@ describe('Actions.Users', () => {
         assert.ok(myUserAccessTokens);
         assert.ok(myUserAccessTokens[data.id]);
         assert.ok(!myUserAccessTokens[data.id].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][data.id]);
+        assert.ok(!userAccessTokensByUser[currentUserId][data.id].token);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(userAccessTokens[currentUserId][data.id]);
-        assert.ok(!userAccessTokens[currentUserId][data.id].token);
+        assert.ok(userAccessTokens[data.id]);
+        assert.ok(!userAccessTokens[data.id].token);
     });
 
     it('revokeUserAccessToken', async () => {
@@ -1262,15 +1357,18 @@ describe('Actions.Users', () => {
         const {data} = await Actions.createUserAccessToken(currentUserId, 'test token')(store.dispatch, store.getState);
 
         let {myUserAccessTokens} = store.getState().entities.users;
-        let {userAccessTokens} = store.getState().entities.admin;
+        let {userAccessTokensByUser, userAccessTokens} = store.getState().entities.admin;
 
         assert.ok(myUserAccessTokens);
         assert.ok(myUserAccessTokens[data.id]);
         assert.ok(!myUserAccessTokens[data.id].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][data.id]);
+        assert.ok(!userAccessTokensByUser[currentUserId][data.id].token);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(userAccessTokens[currentUserId][data.id]);
-        assert.ok(!userAccessTokens[currentUserId][data.id].token);
+        assert.ok(userAccessTokens[data.id]);
+        assert.ok(!userAccessTokens[data.id].token);
 
         nock(Client4.getBaseRoute()).
             post('/users/tokens/revoke').
@@ -1280,6 +1378,7 @@ describe('Actions.Users', () => {
 
         const request = store.getState().requests.users.revokeUserAccessToken;
         myUserAccessTokens = store.getState().entities.users.myUserAccessTokens;
+        userAccessTokensByUser = store.getState().entities.admin.userAccessTokensByUser;
         userAccessTokens = store.getState().entities.admin.userAccessTokens;
 
         if (request.status === RequestStatus.FAILURE) {
@@ -1288,9 +1387,11 @@ describe('Actions.Users', () => {
 
         assert.ok(myUserAccessTokens);
         assert.ok(!myUserAccessTokens[data.id]);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(!userAccessTokensByUser[currentUserId][data.id]);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(!userAccessTokens[currentUserId][data.id]);
+        assert.ok(!userAccessTokens[data.id]);
     });
 
     it('disableUserAccessToken', async () => {
@@ -1300,22 +1401,25 @@ describe('Actions.Users', () => {
         const currentUserId = store.getState().entities.users.currentUserId;
 
         nock(Client4.getBaseRoute()).
-                post(`/users/${currentUserId}/tokens`).
-                reply(201, {id: 'someid', token: 'sometoken', description: 'test token', user_id: currentUserId});
+            post(`/users/${currentUserId}/tokens`).
+            reply(201, {id: 'someid', token: 'sometoken', description: 'test token', user_id: currentUserId});
 
         const {data} = await Actions.createUserAccessToken(currentUserId, 'test token')(store.dispatch, store.getState);
         const testId = data.id;
 
         let {myUserAccessTokens} = store.getState().entities.users;
-        let {userAccessTokens} = store.getState().entities.admin;
+        let {userAccessTokensByUser, userAccessTokens} = store.getState().entities.admin;
 
         assert.ok(myUserAccessTokens);
         assert.ok(myUserAccessTokens[testId]);
         assert.ok(!myUserAccessTokens[testId].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][testId]);
+        assert.ok(!userAccessTokensByUser[currentUserId][testId].token);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(userAccessTokens[currentUserId][testId]);
-        assert.ok(!userAccessTokens[currentUserId][testId].token);
+        assert.ok(userAccessTokens[data.id]);
+        assert.ok(!userAccessTokens[data.id].token);
 
         nock(Client4.getBaseRoute()).
             post('/users/tokens/disable').
@@ -1325,6 +1429,7 @@ describe('Actions.Users', () => {
 
         const request = store.getState().requests.users.revokeUserAccessToken;
         myUserAccessTokens = store.getState().entities.users.myUserAccessTokens;
+        userAccessTokensByUser = store.getState().entities.admin.userAccessTokensByUser;
         userAccessTokens = store.getState().entities.admin.userAccessTokens;
 
         if (request.status === RequestStatus.FAILURE) {
@@ -1335,11 +1440,15 @@ describe('Actions.Users', () => {
         assert.ok(myUserAccessTokens[testId]);
         assert.ok(!myUserAccessTokens[testId].is_active);
         assert.ok(!myUserAccessTokens[testId].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][testId]);
+        assert.ok(!userAccessTokensByUser[currentUserId][testId].is_active);
+        assert.ok(!userAccessTokensByUser[currentUserId][testId].token);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(userAccessTokens[currentUserId][testId]);
-        assert.ok(!userAccessTokens[currentUserId][testId].is_active);
-        assert.ok(!userAccessTokens[currentUserId][testId].token);
+        assert.ok(userAccessTokens[testId]);
+        assert.ok(!userAccessTokens[testId].is_active);
+        assert.ok(!userAccessTokens[testId].token);
     });
 
     it('enableUserAccessToken', async () => {
@@ -1349,22 +1458,25 @@ describe('Actions.Users', () => {
         const currentUserId = store.getState().entities.users.currentUserId;
 
         nock(Client4.getBaseRoute()).
-                post(`/users/${currentUserId}/tokens`).
-                reply(201, {id: 'someid', token: 'sometoken', description: 'test token', user_id: currentUserId});
+            post(`/users/${currentUserId}/tokens`).
+            reply(201, {id: 'someid', token: 'sometoken', description: 'test token', user_id: currentUserId});
 
         const {data} = await Actions.createUserAccessToken(currentUserId, 'test token')(store.dispatch, store.getState);
         const testId = data.id;
 
         let {myUserAccessTokens} = store.getState().entities.users;
-        let {userAccessTokens} = store.getState().entities.admin;
+        let {userAccessTokensByUser, userAccessTokens} = store.getState().entities.admin;
 
         assert.ok(myUserAccessTokens);
         assert.ok(myUserAccessTokens[testId]);
         assert.ok(!myUserAccessTokens[testId].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][testId]);
+        assert.ok(!userAccessTokensByUser[currentUserId][testId].token);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(userAccessTokens[currentUserId][testId]);
-        assert.ok(!userAccessTokens[currentUserId][testId].token);
+        assert.ok(userAccessTokens[testId]);
+        assert.ok(!userAccessTokens[testId].token);
 
         nock(Client4.getBaseRoute()).
             post('/users/tokens/enable').
@@ -1374,6 +1486,7 @@ describe('Actions.Users', () => {
 
         const request = store.getState().requests.users.revokeUserAccessToken;
         myUserAccessTokens = store.getState().entities.users.myUserAccessTokens;
+        userAccessTokensByUser = store.getState().entities.admin.userAccessTokensByUser;
         userAccessTokens = store.getState().entities.admin.userAccessTokens;
 
         if (request.status === RequestStatus.FAILURE) {
@@ -1384,11 +1497,15 @@ describe('Actions.Users', () => {
         assert.ok(myUserAccessTokens[testId]);
         assert.ok(myUserAccessTokens[testId].is_active);
         assert.ok(!myUserAccessTokens[testId].token);
+        assert.ok(userAccessTokensByUser);
+        assert.ok(userAccessTokensByUser[currentUserId]);
+        assert.ok(userAccessTokensByUser[currentUserId][testId]);
+        assert.ok(userAccessTokensByUser[currentUserId][testId].is_active);
+        assert.ok(!userAccessTokensByUser[currentUserId][testId].token);
         assert.ok(userAccessTokens);
-        assert.ok(userAccessTokens[currentUserId]);
-        assert.ok(userAccessTokens[currentUserId][testId]);
-        assert.ok(userAccessTokens[currentUserId][testId].is_active);
-        assert.ok(!userAccessTokens[currentUserId][testId].token);
+        assert.ok(userAccessTokens[testId]);
+        assert.ok(userAccessTokens[testId].is_active);
+        assert.ok(!userAccessTokens[testId].token);
     });
 
     it('clearUserAccessTokens', async () => {

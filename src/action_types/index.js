@@ -1,5 +1,6 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import ChannelTypes from './channels';
 import ErrorTypes from './errors';
@@ -15,6 +16,8 @@ import AdminTypes from './admin';
 import AlertTypes from './alerts';
 import JobTypes from './jobs';
 import SearchTypes from './search';
+import RoleTypes from './roles';
+import SchemeTypes from './schemes';
 
 export {
     ErrorTypes,
@@ -30,5 +33,7 @@ export {
     AdminTypes,
     AlertTypes,
     JobTypes,
-    SearchTypes
+    SearchTypes,
+    RoleTypes,
+    SchemeTypes,
 };

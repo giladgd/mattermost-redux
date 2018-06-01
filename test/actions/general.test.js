@@ -1,5 +1,5 @@
-// Copyright (c) 2016 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 import nock from 'nock';
@@ -104,17 +104,31 @@ describe('Actions.General', () => {
             message_deletion_enabled: true,
             file_deletion_enabled: false,
             message_retention_cutoff: Date.now(),
-            file_retention_cutoff: 0
+            file_retention_cutoff: 0,
         };
 
         nock(Client4.getBaseRoute()).
-        get('/data_retention/policy').
-        query(true).
-        reply(200, responseData);
+            get('/data_retention/policy').
+            query(true).
+            reply(200, responseData);
 
         await Actions.getDataRetentionPolicy()(store.dispatch, store.getState);
         await TestHelper.wait(100);
         const {dataRetentionPolicy} = store.getState().entities.general;
         assert.deepEqual(dataRetentionPolicy, responseData);
+    });
+
+    it('getTimezones', async () => {
+        nock(Client4.getBaseRoute()).
+            get('/system/timezones').
+            query(true).
+            reply(200, ['America/New_York', 'America/Los_Angeles']);
+
+        await Actions.getSupportedTimezones()(store.dispatch, store.getState);
+
+        await TestHelper.wait(100);
+        const {timezones} = store.getState().entities.general;
+        assert.equal(timezones.length > 0, true);
+        assert.equal(timezones.length === 0, false);
     });
 });

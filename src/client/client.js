@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import EventEmitter from 'utils/event_emitter';
 import {General} from 'constants';
@@ -28,7 +28,7 @@ export default class Client {
 
         this.translations = {
             connectionError: 'There appears to be a problem with your internet connection.',
-            unknownError: 'We received an unexpected status code from the server.'
+            unknownError: 'We received an unexpected status code from the server.',
         };
     }
 
@@ -144,7 +144,7 @@ export default class Client {
         const newOptions = Object.assign({}, options);
 
         const headers = {
-            [HEADER_REQUESTED_WITH]: 'XMLHttpRequest'
+            [HEADER_REQUESTED_WITH]: 'XMLHttpRequest',
         };
 
         if (this.token) {
@@ -167,7 +167,7 @@ export default class Client {
 
         return {
             ...newOptions,
-            headers
+            headers,
         };
     }
 
@@ -197,7 +197,7 @@ export default class Client {
     logClientError = async (message, level = 'ERROR') => {
         const body = {
             message,
-            level
+            level,
         };
 
         return this.doFetch(
@@ -213,13 +213,11 @@ export default class Client {
 
     // TODO: add deep linking to emails so we can create accounts from within
     // the mobile app
-    createUserWithInvite = async(user, data, emailHash, inviteId) => {
+    createUserWithInvite = async (user, token, inviteId) => {
         let url = `${this.getUsersRoute()}/create`;
 
-        url += '?d=' + encodeURIComponent(data);
-
-        if (emailHash) {
-            url += '&h=' + encodeURIComponent(emailHash);
+        if (token) {
+            url += '&t=' + encodeURIComponent(token);
         }
 
         if (inviteId) {
@@ -244,7 +242,7 @@ export default class Client {
             device_id: deviceId,
             login_id: loginId,
             password,
-            token
+            token,
         };
 
         const {headers, data} = await this.doFetchWithResponse(
@@ -289,7 +287,7 @@ export default class Client {
         const data = {
             user_id: userId,
             current_password: currentPassword,
-            new_password: newPassword
+            new_password: newPassword,
         };
 
         return this.doFetch(
@@ -580,7 +578,7 @@ export default class Client {
     viewChannel = async (teamId, channelId, prevChannelId = '') => {
         const data = {
             channel_id: channelId,
-            prev_channel_id: prevChannelId
+            prev_channel_id: prevChannelId,
         };
 
         return this.doFetch(
@@ -706,9 +704,9 @@ export default class Client {
             {
                 method: 'post',
                 headers: {
-                    'Content-Type': contentType
+                    'Content-Type': contentType,
                 },
-                body: fileFormData
+                body: fileFormData,
             }
         );
     };
@@ -823,9 +821,9 @@ export default class Client {
             {
                 method: 'post',
                 headers: {
-                    'Content-Type': contentType
+                    'Content-Type': contentType,
                 },
-                body: imageFormData
+                body: imageFormData,
             }
         );
     };
@@ -870,8 +868,8 @@ export default class Client {
             throw {
                 intl: {
                     id: 'mobile.request.invalid_response',
-                    defaultMessage: 'Received invalid response from the server.'
-                }
+                    defaultMessage: 'Received invalid response from the server.',
+                },
             };
         }
 
@@ -879,7 +877,7 @@ export default class Client {
             const serverVersion = headers.get(HEADER_X_VERSION_ID);
             if (serverVersion && this.serverVersion !== serverVersion) {
                 this.serverVersion = serverVersion;
-                EventEmitter.emit(General.CONFIG_CHANGED, serverVersion);
+                EventEmitter.emit(General.SERVER_VERSION_CHANGED, serverVersion);
             }
         }
 
@@ -887,7 +885,7 @@ export default class Client {
             return {
                 response,
                 headers,
-                data
+                data,
             };
         }
 
@@ -901,7 +899,7 @@ export default class Client {
             message: msg,
             server_error_id: data.id,
             status_code: data.status_code,
-            url
+            url,
         };
     };
 }

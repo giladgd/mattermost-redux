@@ -1,5 +1,6 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import General from './general';
 import RequestStatus from './request_status';
@@ -10,6 +11,8 @@ import Files from './files';
 import Alerts from './alerts';
 import Teams from './teams';
 import Stats from './stats';
+import Permissions from './permissions';
+import Emoji from './emoji';
 
 export {
     General,
@@ -20,6 +23,8 @@ export {
     WebsocketEvents,
     Alerts,
     Teams,
-    Stats
+    Stats,
+    Permissions,
+    Emoji,
 };
 

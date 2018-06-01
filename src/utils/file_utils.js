@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {Files} from 'constants';
 import {Client4} from 'client';
@@ -11,7 +11,7 @@ export function getFormattedFileSize(file) {
         ['TB', 1024 * 1024 * 1024 * 1024],
         ['GB', 1024 * 1024 * 1024],
         ['MB', 1024 * 1024],
-        ['KB', 1024]
+        ['KB', 1024],
     ];
     const size = fileSizes.find((unitAndMinBytes) => {
         const minBytes = unitAndMinBytes[1];
@@ -38,7 +38,7 @@ export function getFileType(file) {
         'spreadsheet',
         'word',
         'presentation',
-        'patch'
+        'patch',
     ];
     return fileTypes.find((fileType) => {
         const constForFileTypeExtList = `${fileType}_types`.toUpperCase();
@@ -70,18 +70,12 @@ export function lookupMimeType(filename) {
     return extToMime[ext] || 'application/octet-stream';
 }
 
-export function parseClientIdsFromFormData(formdata) {
-    const parts = formdata._parts; // eslint-disable-line
-    const index = parts.findIndex((p) => p[0] === 'client_ids');
-
-    const clientIds = [...parts[index]];
-    clientIds.shift();
-
-    return clientIds;
-}
-
 export function getFileUrl(fileId) {
     return Client4.getFileRoute(fileId);
+}
+
+export function getFileDownloadUrl(fileId) {
+    return `${Client4.getFileRoute(fileId)}?download=1`;
 }
 
 export function getFileThumbnailUrl(fileId) {

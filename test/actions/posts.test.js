@@ -1,11 +1,13 @@
-// Copyright (c) 2016 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
+import fs from 'fs';
 import assert from 'assert';
 import nock from 'nock';
 
 import * as Actions from 'actions/posts';
 import {login} from 'actions/users';
+import {setSystemEmojis, createCustomEmoji} from 'actions/emojis';
 import {Client4} from 'client';
 import {Preferences, Posts, RequestStatus} from 'constants';
 import {PostTypes} from 'action_types';
@@ -69,6 +71,46 @@ describe('Actions.Posts', () => {
         assert.ok(found, 'failed to find new post in postsInChannel');
     });
 
+    it('resetCreatePostRequest', async () => {
+        const channelId = TestHelper.basicChannel.id;
+        const post = TestHelper.fakePost(channelId);
+        const createPostError = {
+            message: 'Invalid RootId parameter',
+            server_error_id: 'api.post.create_post.root_id.app_error',
+            status_code: 400,
+            url: 'http://localhost:8065/api/v4/posts',
+        };
+
+        nock(Client4.getPostsRoute()).
+            post('').
+            reply(400, createPostError);
+
+        await Actions.createPost(post)(store.dispatch, store.getState);
+        await TestHelper.wait(50);
+
+        let state = store.getState();
+        let createRequest = state.requests.posts.createPost;
+        if (createRequest.status !== RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(createRequest.error));
+        }
+
+        assert.equal(createRequest.status, RequestStatus.FAILURE);
+        assert.equal(createRequest.error.message, createPostError.message);
+        assert.equal(createRequest.error.status_code, createPostError.status_code);
+
+        store.dispatch(Actions.resetCreatePostRequest());
+        await TestHelper.wait(50);
+
+        state = store.getState();
+        createRequest = state.requests.posts.createPost;
+        if (createRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(createRequest.error));
+        }
+
+        assert.equal(createRequest.status, RequestStatus.NOT_STARTED);
+        assert.equal(createRequest.error, null);
+    });
+
     it('createPost with file attachments', async () => {
         const channelId = TestHelper.basicChannel.id;
         const post = TestHelper.fakePost(channelId);
@@ -113,63 +155,63 @@ describe('Actions.Posts', () => {
         assert.equal(postIdForFiles.length, files.length);
     });
 
-    it('retry failed post', async () => {
-        if (TestHelper.isLiveServer()) {
-            console.log('Skipping mock-only test');
-            return;
-        }
+    // it('retry failed post', async () => {
+    //     if (TestHelper.isLiveServer()) {
+    //         console.log('Skipping mock-only test');
+    //         return;
+    //     }
 
-        const channelId = TestHelper.basicChannel.id;
-        const post = TestHelper.fakePost(channelId);
+    //     const channelId = TestHelper.basicChannel.id;
+    //     const post = TestHelper.fakePost(channelId);
 
-        nock(Client4.getBaseRoute()).
-            post('/posts').
-            reply(400, {});
+    //     nock(Client4.getBaseRoute()).
+    //         post('/posts').
+    //         reply(400, {});
 
-        nock(Client4.getPostsRoute()).
-            post('').
-            reply(201, {...post, id: TestHelper.generateId()});
+    //     nock(Client4.getPostsRoute()).
+    //         post('').
+    //         reply(201, {...post, id: TestHelper.generateId()});
 
-        await Actions.createPost(post)(store.dispatch, store.getState);
+    //     await Actions.createPost(post)(store.dispatch, store.getState);
 
-        await TestHelper.wait(200);
+    //     await TestHelper.wait(200);
 
-        let state = store.getState();
+    //     let state = store.getState();
 
-        const {posts} = state.entities.posts;
-        assert.ok(posts);
+    //     const {posts} = state.entities.posts;
+    //     assert.ok(posts);
 
-        let failedPost;
-        for (const storedPost of Object.values(posts)) {
-            if (storedPost.failed) {
-                failedPost = storedPost;
-                break;
-            }
-        }
+    //     let failedPost;
+    //     for (const storedPost of Object.values(posts)) {
+    //         if (storedPost.failed) {
+    //             failedPost = storedPost;
+    //             break;
+    //         }
+    //     }
 
-        assert.ok(failedPost, 'failed to find failed post');
+    //     assert.ok(failedPost, 'failed to find failed post');
 
-        // Retry the post
-        const {id, failed, ...retryPost} = failedPost; // eslint-disable-line
-        await Actions.createPost(retryPost)(store.dispatch, store.getState);
+    //     // Retry the post
+    //     const {id, failed, ...retryPost} = failedPost; // eslint-disable-line
+    //     await Actions.createPost(retryPost)(store.dispatch, store.getState);
 
-        await TestHelper.wait(500);
+    //     await TestHelper.wait(500);
 
-        state = store.getState();
-        const {posts: nextPosts} = state.entities.posts;
+    //     state = store.getState();
+    //     const {posts: nextPosts} = state.entities.posts;
 
-        let found = false;
-        for (const storedPost of Object.values(nextPosts)) {
-            if (storedPost.pending_post_id === failedPost.pending_post_id) {
-                if (!storedPost.failed) {
-                    found = true;
-                    break;
-                }
-            }
-        }
+    //     let found = false;
+    //     for (const storedPost of Object.values(nextPosts)) {
+    //         if (storedPost.pending_post_id === failedPost.pending_post_id) {
+    //             if (!storedPost.failed) {
+    //                 found = true;
+    //                 break;
+    //             }
+    //         }
+    //     }
 
-        assert.ok(found, 'Retried post failed again.');
-    });
+    //     assert.ok(found, 'Retried post failed again.');
+    // });
 
     it('editPost', async () => {
         const channelId = TestHelper.basicChannel.id;
@@ -295,7 +337,7 @@ describe('Actions.Posts', () => {
             TestHelper.basicPost
         )(store.dispatch, store.getState);
 
-        const {posts, postsInChannel} = store.getState().entities.posts;
+        const {posts, postsInChannel, postsInThread} = store.getState().entities.posts;
 
         assert.ok(posts);
         assert.ok(postsInChannel);
@@ -305,6 +347,7 @@ describe('Actions.Posts', () => {
         assert.equal(postsInChannel[channelId].length, postsCount - 2);
         assert.ok(!posts[postId]);
         assert.ok(!posts[post1a.id]);
+        assert.ok(!postsInThread[postId]);
     });
 
     it('removePostWithReaction', async () => {
@@ -478,7 +521,7 @@ describe('Actions.Posts', () => {
 
         const state = store.getState();
         const getRequest = state.requests.posts.getPosts;
-        const {posts, postsInChannel} = state.entities.posts;
+        const {posts, postsInChannel, postsInThread} = state.entities.posts;
 
         if (getRequest.status === RequestStatus.FAILURE) {
             throw new Error(JSON.stringify(getRequest.error));
@@ -498,6 +541,14 @@ describe('Actions.Posts', () => {
         assert.ok(posts[post2.id]);
         assert.ok(posts[post3.id]);
         assert.ok(posts[post3a.id]);
+
+        let postsForThread = postsInThread[post1.id];
+        assert.ok(postsForThread);
+        assert.ok(postsForThread.includes(post1a.id));
+
+        postsForThread = postsInThread[post3.id];
+        assert.ok(postsForThread);
+        assert.ok(postsForThread.includes(post3a.id));
     });
 
     it('getPostsWithRetry', async () => {
@@ -563,7 +614,7 @@ describe('Actions.Posts', () => {
 
         const state = store.getState();
         const getRequest = state.requests.posts.getPosts;
-        const {posts, postsInChannel} = state.entities.posts;
+        const {posts, postsInChannel, postsInThread} = state.entities.posts;
 
         if (getRequest.status === RequestStatus.FAILURE) {
             throw new Error(JSON.stringify(getRequest.error));
@@ -583,6 +634,14 @@ describe('Actions.Posts', () => {
         assert.ok(posts[post2.id]);
         assert.ok(posts[post3.id]);
         assert.ok(posts[post3a.id]);
+
+        let postsForThread = postsInThread[post1.id];
+        assert.ok(postsForThread);
+        assert.ok(postsForThread.includes(post1a.id));
+
+        postsForThread = postsInThread[post3.id];
+        assert.ok(postsForThread);
+        assert.ok(postsForThread.includes(post3a.id));
     });
 
     it('getNeededAtMentionedUsernames', async () => {
@@ -592,58 +651,58 @@ describe('Actions.Posts', () => {
                     profiles: {
                         1: {
                             id: '1',
-                            username: 'aaa'
-                        }
-                    }
-                }
-            }
+                            username: 'aaa',
+                        },
+                    },
+                },
+            },
         };
 
         assert.deepEqual(
             Actions.getNeededAtMentionedUsernames(state, {
-                abcd: {message: 'aaa'}
+                abcd: {message: 'aaa'},
             }),
             new Set()
         );
 
         assert.deepEqual(
             Actions.getNeededAtMentionedUsernames(state, {
-                abcd: {message: '@aaa'}
+                abcd: {message: '@aaa'},
             }),
             new Set()
         );
 
         assert.deepEqual(
             Actions.getNeededAtMentionedUsernames(state, {
-                abcd: {message: '@aaa @bbb @ccc'}
+                abcd: {message: '@aaa @bbb @ccc'},
             }),
             new Set(['bbb', 'ccc'])
         );
 
         assert.deepEqual(
             Actions.getNeededAtMentionedUsernames(state, {
-                abcd: {message: '@bbb. @ccc.ddd'}
+                abcd: {message: '@bbb. @ccc.ddd'},
             }),
             new Set(['bbb.', 'bbb', 'ccc.ddd'])
         );
 
         assert.deepEqual(
             Actions.getNeededAtMentionedUsernames(state, {
-                abcd: {message: '@bbb- @ccc-ddd'}
+                abcd: {message: '@bbb- @ccc-ddd'},
             }),
             new Set(['bbb-', 'bbb', 'ccc-ddd'])
         );
 
         assert.deepEqual(
             Actions.getNeededAtMentionedUsernames(state, {
-                abcd: {message: '@bbb_ @ccc_ddd'}
+                abcd: {message: '@bbb_ @ccc_ddd'},
             }),
             new Set(['bbb_', 'ccc_ddd'])
         );
 
         assert.deepEqual(
             Actions.getNeededAtMentionedUsernames(state, {
-                abcd: {message: '(@bbb/@ccc) ddd@eee'}
+                abcd: {message: '(@bbb/@ccc) ddd@eee'},
             }),
             new Set(['bbb', 'ccc'])
         );
@@ -655,10 +714,134 @@ describe('Actions.Posts', () => {
                 abcd2: {message: '@channel'},
                 abcd3: {message: '@all.'},
                 abcd4: {message: '@here.'},
-                abcd5: {message: '@channel.'}
+                abcd5: {message: '@channel.'},
             }),
             new Set(),
             'should never try to request usernames matching special mentions'
+        );
+    });
+
+    it('getNeededCustomEmojis', async () => {
+        const state = {
+            entities: {
+                emojis: {
+                    customEmoji: {
+                        1: {
+                            id: '1',
+                            creator_id: '1',
+                            name: 'name1',
+                        },
+                    },
+                    nonExistentEmoji: new Set(['name2']),
+                },
+            },
+        };
+
+        setSystemEmojis(new Map([['systemEmoji1', {}]]));
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: 'aaa'},
+            }),
+            new Set()
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: ':name1:'},
+            }),
+            new Set()
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: ':systemEmoji1:'},
+            }),
+            new Set()
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: ':systemEmoji1: :name1: :name2: :name3:'},
+            }),
+            new Set(['name3'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: 'aaa :name3: :name4:'},
+            }),
+            new Set(['name3', 'name4'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: ':name3:!'},
+            }),
+            new Set(['name3'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: ':name-3:'},
+            }),
+            new Set(['name-3'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: ':name_3:'},
+            }),
+            new Set(['name_3'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: '', props: {attachments: [{text: ':name3:'}]}},
+            }),
+            new Set(['name3'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: '', props: {attachments: [{pretext: ':name3:'}]}},
+            }),
+            new Set(['name3'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: '', props: {attachments: [{fields: [{value: ':name3:'}]}]}},
+            }),
+            new Set(['name3'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: '', props: {attachments: [{text: ':name4: :name1:', pretext: ':name3: :systemEmoji1:', fields: [{value: ':name3:'}]}]}},
+            }),
+            new Set(['name3', 'name4'])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: '', props: {attachments: [{fields: [{}]}]}},
+            }),
+            new Set([])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: '', props: {attachments: [{text: null, pretext: null, fields: null}]}},
+            }),
+            new Set([])
+        );
+
+        assert.deepEqual(
+            Actions.getNeededCustomEmojis(state, {
+                abcd: {message: '', props: {attachments: null}},
+            }),
+            new Set([])
         );
     });
 
@@ -856,7 +1039,7 @@ describe('Actions.Posts', () => {
 
         const state = store.getState();
         const getRequest = state.requests.posts.getPostsBefore;
-        const {posts, postsInChannel} = state.entities.posts;
+        const {posts, postsInChannel, postsInThread} = state.entities.posts;
 
         if (getRequest.status === RequestStatus.FAILURE) {
             throw new Error(JSON.stringify(getRequest.error));
@@ -870,6 +1053,10 @@ describe('Actions.Posts', () => {
         assert.equal(postsForChannel[0], post1a.id, 'wrong order for post1a');
         assert.equal(postsForChannel[1], post1.id, 'wrong order for post1');
         assert.ok(postsForChannel.length <= 10, 'wrong size');
+
+        const postsForThread = postsInThread[post1.id];
+        assert.ok(postsForThread);
+        assert.ok(postsForThread.includes(post1a.id));
     });
 
     it('getPostsBeforeWithRetry', async () => {
@@ -1003,7 +1190,7 @@ describe('Actions.Posts', () => {
 
         const state = store.getState();
         const getRequest = state.requests.posts.getPostsAfter;
-        const {posts, postsInChannel} = state.entities.posts;
+        const {posts, postsInChannel, postsInThread} = state.entities.posts;
 
         if (getRequest.status === RequestStatus.FAILURE) {
             throw new Error(JSON.stringify(getRequest.error));
@@ -1017,6 +1204,10 @@ describe('Actions.Posts', () => {
         assert.equal(postsForChannel[0], post3a.id, 'wrong order for post3a');
         assert.equal(postsForChannel[1], post3.id, 'wrong order for post3');
         assert.equal(postsForChannel.length, 2, 'wrong size');
+
+        const postsForThread = postsInThread[post3.id];
+        assert.ok(postsForThread);
+        assert.ok(postsForThread.includes(post3a.id));
     });
 
     it('getPostsAfterWithRetry', async () => {
@@ -1330,7 +1521,7 @@ describe('Actions.Posts', () => {
 
         dispatch({
             type: PostTypes.REACTION_DELETED,
-            data: {user_id: TestHelper.basicUser.id, post_id: post1.id, emoji_name: emojiName}
+            data: {user_id: TestHelper.basicUser.id, post_id: post1.id, emoji_name: emojiName},
         });
 
         nock(Client4.getPostsRoute()).
@@ -1348,6 +1539,46 @@ describe('Actions.Posts', () => {
         const reactions = state.entities.posts.reactions[post1.id];
         assert.ok(reactions);
         assert.ok(reactions[TestHelper.basicUser.id + '-' + emojiName]);
+    });
+
+    it('getCustomEmojiForReaction', async () => {
+        const oldVersion = Client4.getServerVersion();
+        Client4.serverVersion = '4.7.0';
+
+        const testImageData = fs.createReadStream('test/assets/images/test.png');
+        const {dispatch, getState} = store;
+
+        nock(Client4.getEmojisRoute()).
+            post('').
+            reply(201, {id: TestHelper.generateId(), create_at: 1507918415696, update_at: 1507918415696, delete_at: 0, creator_id: TestHelper.basicUser.id, name: TestHelper.generateId()});
+
+        const {data: created} = await createCustomEmoji(
+            {
+                name: TestHelper.generateId(),
+                creator_id: TestHelper.basicUser.id,
+            },
+            testImageData
+        )(store.dispatch, store.getState);
+
+        nock(Client4.getEmojisRoute()).
+            get(`/name/${created.name}`).
+            reply(200, created);
+
+        const missingEmojiName = ':notrealemoji:';
+
+        nock(Client4.getEmojisRoute()).
+            get(`/name/${missingEmojiName}`).
+            reply(404, {message: 'Not found', status_code: 404});
+
+        await Actions.getCustomEmojiForReaction(missingEmojiName)(dispatch, getState);
+
+        const state = getState();
+        const emojis = state.entities.emojis.customEmoji;
+        assert.ok(emojis);
+        assert.ok(emojis[created.id]);
+        assert.ok(state.entities.emojis.nonExistentEmoji.has(missingEmojiName));
+
+        Client4.serverVersion = oldVersion;
     });
 
     it('getOpenGraphMetadata', async () => {

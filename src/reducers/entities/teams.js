@@ -1,8 +1,8 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {combineReducers} from 'redux';
-import {TeamTypes, UserTypes} from 'action_types';
+import {ChannelTypes, TeamTypes, UserTypes, SchemeTypes} from 'action_types';
 import {teamListToMap} from 'utils/team_utils';
 
 function currentTeamId(state = '', action) {
@@ -20,6 +20,7 @@ function currentTeamId(state = '', action) {
 function teams(state = {}, action) {
     switch (action.type) {
     case TeamTypes.RECEIVED_TEAMS_LIST:
+    case SchemeTypes.RECEIVED_SCHEME_TEAMS:
         return Object.assign({}, state, teamListToMap(action.data));
     case TeamTypes.RECEIVED_TEAMS:
         return Object.assign({}, state, action.data);
@@ -29,8 +30,30 @@ function teams(state = {}, action) {
     case TeamTypes.RECEIVED_TEAM:
         return {
             ...state,
-            [action.data.id]: action.data
+            [action.data.id]: action.data,
         };
+
+    case TeamTypes.RECEIVED_TEAM_DELETED: {
+        const nextState = {...state};
+        const teamId = action.data.id;
+        if (nextState.hasOwnProperty(teamId)) {
+            Reflect.deleteProperty(nextState, teamId);
+            return nextState;
+        }
+
+        return state;
+    }
+
+    case TeamTypes.UPDATED_TEAM_SCHEME: {
+        const {teamId, schemeId} = action.data;
+        const team = state[teamId];
+
+        if (!team) {
+            return state;
+        }
+
+        return {...state, [teamId]: {...team, scheme_id: schemeId}};
+    }
 
     case UserTypes.LOGOUT_SUCCESS:
         return {};
@@ -41,6 +64,14 @@ function teams(state = {}, action) {
 }
 
 function myMembers(state = {}, action) {
+    function updateState(receivedTeams = {}, currentState = {}) {
+        return Object.keys(receivedTeams).forEach((teamId) => {
+            if (receivedTeams[teamId].delete_at > 0 && currentState[teamId]) {
+                Reflect.deleteProperty(currentState, teamId);
+            }
+        });
+    }
+
     switch (action.type) {
     case TeamTypes.RECEIVED_MY_TEAM_MEMBER: {
         const nextState = {...state};
@@ -58,13 +89,24 @@ function myMembers(state = {}, action) {
                 const prevMember = state[m.team_id] || {mention_count: 0, msg_count: 0};
                 nextState[m.team_id] = {
                     ...prevMember,
-                    ...m
+                    ...m,
                 };
             }
         }
         return nextState;
     }
+    case TeamTypes.RECEIVED_TEAMS_LIST: {
+        const nextState = {...state};
+        const receivedTeams = teamListToMap(action.data);
 
+        return updateState(receivedTeams, nextState) || nextState;
+    }
+    case TeamTypes.RECEIVED_TEAMS: {
+        const nextState = {...state};
+        const receivedTeams = action.data;
+
+        return updateState(receivedTeams, nextState) || nextState;
+    }
     case TeamTypes.RECEIVED_MY_TEAM_UNREADS: {
         const nextState = {...state};
         const unreads = action.data;
@@ -74,23 +116,96 @@ function myMembers(state = {}, action) {
             const m = {
                 ...state[u.team_id],
                 mention_count: mentionCount,
-                msg_count: msgCount
+                msg_count: msgCount,
             };
             nextState[u.team_id] = m;
         }
 
         return nextState;
     }
+    case ChannelTypes.INCREMENT_UNREAD_MSG_COUNT: {
+        const {teamId, amount, onlyMentions} = action.data;
+        const member = state[teamId];
 
-    case TeamTypes.LEAVE_TEAM: {
+        if (!member) {
+            // Don't keep track of unread posts until we've loaded the actual team member
+            return state;
+        }
+
+        if (onlyMentions) {
+            // Incrementing the msg_count marks the team as unread, so don't do that if these posts shouldn't be unread
+            return state;
+        }
+
+        return {
+            ...state,
+            [teamId]: {
+                ...member,
+                msg_count: member.msg_count + amount,
+            },
+        };
+    }
+    case ChannelTypes.DECREMENT_UNREAD_MSG_COUNT: {
+        const {teamId, amount} = action.data;
+        const member = state[teamId];
+
+        if (!member) {
+            // Don't keep track of unread posts until we've loaded the actual team member
+            return state;
+        }
+
+        return {
+            ...state,
+            [teamId]: {
+                ...member,
+                msg_count: Math.max(member.msg_count - amount, 0),
+            },
+        };
+    }
+    case ChannelTypes.INCREMENT_UNREAD_MENTION_COUNT: {
+        const {teamId, amount} = action.data;
+        const member = state[teamId];
+
+        if (!member) {
+            // Don't keep track of unread posts until we've loaded the actual team member
+            return state;
+        }
+
+        return {
+            ...state,
+            [teamId]: {
+                ...member,
+                mention_count: member.mention_count + amount,
+            },
+        };
+    }
+    case ChannelTypes.DECREMENT_UNREAD_MENTION_COUNT: {
+        const {teamId, amount} = action.data;
+        const member = state[teamId];
+
+        if (!member) {
+            // Don't keep track of unread posts until we've loaded the actual team member
+            return state;
+        }
+
+        return {
+            ...state,
+            [teamId]: {
+                ...member,
+                mention_count: Math.max(member.mention_count - amount, 0),
+            },
+        };
+    }
+    case TeamTypes.LEAVE_TEAM:
+    case TeamTypes.RECEIVED_TEAM_DELETED: {
         const nextState = {...state};
         const data = action.data;
         Reflect.deleteProperty(nextState, data.id);
         return nextState;
     }
+
     case UserTypes.LOGOUT_SUCCESS:
         return {};
-
     default:
         return state;
     }
@@ -104,7 +219,7 @@ function membersInTeam(state = {}, action) {
         members[data.user_id] = data;
         return {
             ...state,
-            [data.team_id]: members
+            [data.team_id]: members,
         };
     }
     case TeamTypes.RECEIVED_TEAM_MEMBERS: {
@@ -136,7 +251,7 @@ function membersInTeam(state = {}, action) {
 
             return {
                 ...state,
-                [teamId]: members
+                [teamId]: members,
             };
         }
 
@@ -150,8 +265,18 @@ function membersInTeam(state = {}, action) {
             Reflect.deleteProperty(nextState, data.user_id);
             return {
                 ...state,
-                [data.team_id]: nextState
+                [data.team_id]: nextState,
             };
+        }
+
+        return state;
+    }
+    case TeamTypes.RECEIVED_TEAM_DELETED: {
+        const nextState = {...state};
+        const teamId = action.data.id;
+        if (nextState.hasOwnProperty(teamId)) {
+            Reflect.deleteProperty(nextState, teamId);
+            return nextState;
         }
 
         return state;
@@ -169,8 +294,18 @@ function stats(state = {}, action) {
         const stat = action.data;
         return {
             ...state,
-            [stat.team_id]: stat
+            [stat.team_id]: stat,
         };
+    }
+    case TeamTypes.RECEIVED_TEAM_DELETED: {
+        const nextState = {...state};
+        const teamId = action.data.id;
+        if (nextState.hasOwnProperty(teamId)) {
+            Reflect.deleteProperty(nextState, teamId);
+            return nextState;
+        }
+
+        return state;
     }
     case UserTypes.LOGOUT_SUCCESS:
         return {};
@@ -190,9 +325,9 @@ export default combineReducers({
     // object where every key is the team id and has and object with the team members detail
     myMembers,
 
-    // object where every key is the team id and has an of members in the team where the key is user id
+    // object where every key is the team id and has an object of members in the team where the key is user id
     membersInTeam,
 
     // object where every key is the team id and has an object with the team stats
-    stats
+    stats,
 });

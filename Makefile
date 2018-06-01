@@ -1,5 +1,4 @@
-.PHONY: check-style clean pre-run test install
-
+.PHONY: check-style clean pre-run test install flow
 
 .npminstall: package.json
 	@if ! [ $(shell which npm) ]; then \
@@ -9,7 +8,7 @@
 
 	@echo Getting dependencies using npm
 
-	npm install --ignore-scripts --no-package-lock
+	npm install --ignore-scripts
 
 	touch $@
 
@@ -18,11 +17,9 @@ check-style: | pre-run .npminstall
 
 	npm run check
 
-
 clean:
 	@echo Cleaning app
 
-	npm cache clean --force
 	rm -rf node_modules
 	rm -f .npminstall
 
@@ -41,6 +38,18 @@ pre-run:
 
 test: check-style
 	npm test
+
+flow: .flowinstall
+	@echo Checking types
+
+	npm run flow
+
+.flowinstall: .npminstall
+	@echo Getting flow-typed packages
+
+	npm run flow-typed install
+
+	touch $@
 
 install: .npminstall
 

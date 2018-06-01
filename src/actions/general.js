@@ -1,13 +1,12 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {Client, Client4} from 'client';
 import {bindClientFunc, forceLogoutIfNecessary, FormattedError} from './helpers.js';
 import {GeneralTypes} from 'action_types';
-import {General} from 'constants';
 import {loadMe} from './users';
+import {loadRolesIfNeeded} from './roles';
 import {logError} from './errors';
-import EventEmitter from 'utils/event_emitter';
 import {batchActions} from 'redux-batched-actions';
 
 export function getPing(useV3 = false) {
@@ -15,7 +14,7 @@ export function getPing(useV3 = false) {
         dispatch({type: GeneralTypes.PING_REQUEST}, getState);
 
         let data;
-        const pingError = new FormattedError(
+        let pingError = new FormattedError(
             'mobile.server_ping_failed',
             'Cannot connect to the server. Please check your server URL and internet connection.'
         );
@@ -32,7 +31,13 @@ export function getPing(useV3 = false) {
             }
         } catch (error) {
             if (!useV3 && error.status_code === 404) {
+                if (!Client.getUrl()) {
+                    Client.setUrl(Client4.getUrl());
+                }
                 return getPing(true)(dispatch, getState);
+            } else if (error.status_code === 401) {
+                // When the server requires a client certificate to connect.
+                pingError = error;
             }
             dispatch({type: GeneralTypes.PING_FAILURE, error: pingError}, getState);
             return {error: pingError};
@@ -59,22 +64,23 @@ export function getClientConfig() {
         try {
             data = await Client4.getClientConfigOld();
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {
                     type: GeneralTypes.CLIENT_CONFIG_FAILURE,
-                    error
+                    error,
                 },
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
         Client4.setEnableLogging(data.EnableDeveloper === 'true');
+        Client4.setDiagnosticId(data.DiagnosticId);
 
         dispatch(batchActions([
             {type: GeneralTypes.CLIENT_CONFIG_RECEIVED, data},
-            {type: GeneralTypes.CLIENT_CONFIG_SUCCESS}
+            {type: GeneralTypes.CLIENT_CONFIG_SUCCESS},
         ]));
 
         return {data};
@@ -89,20 +95,20 @@ export function getDataRetentionPolicy() {
         try {
             data = await Client4.getDataRetentionPolicy();
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {
                     type: GeneralTypes.DATA_RETENTION_POLICY_FAILURE,
-                    error
+                    error,
                 },
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
         dispatch(batchActions([
             {type: GeneralTypes.RECEIVED_DATA_RETENTION_POLICY, data},
-            {type: GeneralTypes.DATA_RETENTION_POLICY_SUCCESS}
+            {type: GeneralTypes.DATA_RETENTION_POLICY_SUCCESS},
         ]));
 
         return {data};
@@ -145,11 +151,10 @@ export function setDeviceToken(token) {
     };
 }
 
-EventEmitter.on(General.CONFIG_CHANGED, setServerVersion);
-
 export function setServerVersion(serverVersion) {
     return async (dispatch, getState) => {
         dispatch({type: GeneralTypes.RECEIVED_SERVER_VERSION, data: serverVersion}, getState);
+        dispatch(loadRolesIfNeeded([]));
 
         return {data: true};
     };
@@ -166,6 +171,15 @@ export function setStoreFromLocalData(data) {
     };
 }
 
+export function getSupportedTimezones() {
+    return bindClientFunc(
+        Client4.getTimezones,
+        GeneralTypes.SUPPORTED_TIMEZONES_REQUEST,
+        [GeneralTypes.SUPPORTED_TIMEZONES_RECEIVED, GeneralTypes.SUPPORTED_TIMEZONES_SUCCESS],
+        GeneralTypes.SUPPORTED_TIMEZONES_FAILURE,
+    );
+}
+
 export function setUrl(url) {
     Client.setUrl(url);
     Client4.setUrl(url);
@@ -176,11 +190,12 @@ export default {
     getPing,
     getClientConfig,
     getDataRetentionPolicy,
+    getSupportedTimezones,
     getLicenseConfig,
     logClientError,
     setAppState,
     setDeviceToken,
     setServerVersion,
     setStoreFromLocalData,
-    setUrl
+    setUrl,
 };

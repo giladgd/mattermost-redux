@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 const MAX_WEBSOCKET_FAILS = 7;
 const MIN_WEBSOCKET_RETRY_TIME = 3000; // 3 sec
@@ -30,10 +30,10 @@ class WebSocketClient {
         const defaults = {
             forceConnection: true,
             connectionUrl: this.connectionUrl,
-            webSocketConnector: WebSocket
+            webSocketConnector: WebSocket,
         };
 
-        const {connectionUrl, forceConnection, webSocketConnector, platform} = Object.assign({}, defaults, opts);
+        const {connectionUrl, forceConnection, webSocketConnector, platform, ...additionalOptions} = Object.assign({}, defaults, opts);
 
         if (platform) {
             this.platform = platform;
@@ -83,7 +83,7 @@ class WebSocketClient {
                 }
             }
 
-            this.conn = new Socket(connectionUrl, [], {headers: {origin}});
+            this.conn = new Socket(connectionUrl, [], {headers: {origin}, ...(additionalOptions || {})});
             this.connectionUrl = connectionUrl;
             this.token = token;
             this.dispatch = dispatch;
@@ -103,10 +103,10 @@ class WebSocketClient {
                     }
                 } else if (this.firstConnectCallback) {
                     this.firstConnectCallback(this.dispatch, this.getState);
-                    resolve();
                 }
 
                 this.connectFailCount = 0;
+                resolve();
             };
 
             this.conn.onclose = () => {
@@ -208,7 +208,7 @@ class WebSocketClient {
         const msg = {
             action,
             seq: this.sequence++,
-            data
+            data,
         };
 
         if (this.conn && this.conn.readyState === Socket.OPEN) {
@@ -222,7 +222,7 @@ class WebSocketClient {
     userTyping(channelId, parentId) {
         this.sendMessage('user_typing', {
             channel_id: channelId,
-            parent_id: parentId
+            parent_id: parentId,
         });
     }
 
@@ -232,7 +232,7 @@ class WebSocketClient {
 
     getStatusesByIds(userIds) {
         this.sendMessage('get_statuses_by_ids', {
-            user_ids: userIds
+            user_ids: userIds,
         });
     }
 }

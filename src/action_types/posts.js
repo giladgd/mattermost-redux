@@ -1,5 +1,6 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
@@ -7,6 +8,9 @@ export default keyMirror({
     CREATE_POST_REQUEST: null,
     CREATE_POST_SUCCESS: null,
     CREATE_POST_FAILURE: null,
+    CREATE_POST_RESET_REQUEST: null,
+
+    REMOVE_PENDING_POST: null,
 
     EDIT_POST_REQUEST: null,
     EDIT_POST_SUCCESS: null,
@@ -70,5 +74,5 @@ export default keyMirror({
     ADD_MESSAGE_INTO_HISTORY: null,
     RESET_HISTORY_INDEX: null,
     MOVE_HISTORY_INDEX_BACK: null,
-    MOVE_HISTORY_INDEX_FORWARD: null
+    MOVE_HISTORY_INDEX_FORWARD: null,
 });

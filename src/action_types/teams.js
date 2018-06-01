@@ -1,5 +1,6 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
@@ -23,6 +24,14 @@ export default keyMirror({
     UPDATE_TEAM_REQUEST: null,
     UPDATE_TEAM_SUCCESS: null,
     UPDATE_TEAM_FAILURE: null,
+
+    SET_TEAM_ICON_REQUEST: null,
+    SET_TEAM_ICON_SUCCESS: null,
+    SET_TEAM_ICON_FAILURE: null,
+
+    REMOVE_TEAM_ICON_REQUEST: null,
+    REMOVE_TEAM_ICON_SUCCESS: null,
+    REMOVE_TEAM_ICON_FAILURE: null,
 
     MY_TEAM_MEMBERS_REQUEST: null,
     MY_TEAM_MEMBERS_SUCCESS: null,
@@ -64,11 +73,20 @@ export default keyMirror({
     JOIN_TEAM_SUCCESS: null,
     JOIN_TEAM_FAILURE: null,
 
+    DELETE_TEAM_REQUEST: null,
+    DELETE_TEAM_SUCCESS: null,
+    DELETE_TEAM_FAILURE: null,
+
+    UPDATE_TEAM_SCHEME_REQUEST: null,
+    UPDATE_TEAM_SCHEME_SUCCESS: null,
+    UPDATE_TEAM_SCHEME_FAILURE: null,
+
     CREATED_TEAM: null,
     SELECT_TEAM: null,
     UPDATED_TEAM: null,
     RECEIVED_TEAM: null,
     RECEIVED_TEAMS: null,
+    RECEIVED_TEAM_DELETED: null,
     RECEIVED_TEAMS_LIST: null,
     RECEIVED_MY_TEAM_MEMBERS: null,
     RECEIVED_MY_TEAM_MEMBER: null,
@@ -78,5 +96,6 @@ export default keyMirror({
     REMOVE_MEMBER_FROM_TEAM: null,
     RECEIVED_TEAM_STATS: null,
     RECEIVED_MY_TEAM_UNREADS: null,
-    LEAVE_TEAM: null
+    LEAVE_TEAM: null,
+    UPDATED_TEAM_SCHEME: null,
 });

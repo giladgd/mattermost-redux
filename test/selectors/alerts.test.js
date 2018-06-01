@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 
@@ -14,15 +14,15 @@ describe('Selectors.Alerts', () => {
         {type: Alerts.ALERT_ERROR, message: '3'},
         {type: Alerts.ALERT_ERROR, message: '4'},
         {type: Alerts.ALERT_DEVELOPER, message: '5'},
-        {type: Alerts.ALERT_NOTIFICATION, message: '6'}
+        {type: Alerts.ALERT_NOTIFICATION, message: '6'},
     ];
 
     const testState = deepFreezeAndThrowOnMutation({
         entities: {
             alerts: {
-                alertStack
-            }
-        }
+                alertStack,
+            },
+        },
     });
 
     it('should return all alerts', () => {

@@ -1,5 +1,6 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
@@ -161,5 +162,5 @@ export default keyMirror({
     CLEAR_MY_USER_ACCESS_TOKENS: null,
     REVOKED_USER_ACCESS_TOKEN: null,
     DISABLED_USER_ACCESS_TOKEN: null,
-    ENABLED_USER_ACCESS_TOKEN: null
+    ENABLED_USER_ACCESS_TOKEN: null,
 });

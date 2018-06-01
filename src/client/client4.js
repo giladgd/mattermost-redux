@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import EventEmitter from 'utils/event_emitter';
 import {General} from 'constants';
@@ -7,6 +7,7 @@ import {General} from 'constants';
 const FormData = require('form-data');
 
 import fetch from './fetch_etag';
+import {isMinimumServerVersion} from 'src/utils/helpers';
 
 const HEADER_TOKEN = 'Token';
 const HEADER_AUTH = 'Authorization';
@@ -17,6 +18,7 @@ const HEADER_X_VERSION_ID = 'X-Version-Id';
 const HEADER_X_CLUSTER_ID = 'X-Cluster-Id';
 
 const PER_PAGE_DEFAULT = 60;
+const LOGS_PER_PAGE_DEFAULT = 10000;
 
 export default class Client4 {
     constructor() {
@@ -30,11 +32,12 @@ export default class Client4 {
         this.enableLogging = false;
         this.defaultHeaders = {};
         this.userId = '';
+        this.diagnosticId = '';
         this.includeCookies = true;
 
         this.translations = {
             connectionError: 'There appears to be a problem with your internet connection.',
-            unknownError: 'We received an unexpected status code from the server.'
+            unknownError: 'We received an unexpected status code from the server.',
         };
     }
 
@@ -74,6 +77,10 @@ export default class Client4 {
         this.userId = userId;
     }
 
+    setDiagnosticId(diagnosticId) {
+        this.diagnosticId = diagnosticId;
+    }
+
     getServerVersion() {
         return this.serverVersion;
     }
@@ -102,6 +109,10 @@ export default class Client4 {
         return `${this.getTeamsRoute()}/${teamId}`;
     }
 
+    getTeamSchemeRoute(teamId) {
+        return `${this.getTeamRoute(teamId)}/scheme`;
+    }
+
     getTeamNameRoute(teamName) {
         return `${this.getTeamsRoute()}/name/${teamName}`;
     }
@@ -128,6 +139,10 @@ export default class Client4 {
 
     getChannelMemberRoute(channelId, userId) {
         return `${this.getChannelMembersRoute(channelId)}/${userId}`;
+    }
+
+    getChannelSchemeRoute(channelId) {
+        return `${this.getChannelRoute(channelId)}/scheme`;
     }
 
     getPostsRoute() {
@@ -218,12 +233,24 @@ export default class Client4 {
         return `${this.getPluginsRoute()}/${pluginId}`;
     }
 
+    getRolesRoute() {
+        return `${this.getBaseRoute()}/roles`;
+    }
+
+    getTimezonesRoute() {
+        return `${this.getBaseRoute()}/system/timezones`;
+    }
+
+    getSchemesRoute() {
+        return `${this.getBaseRoute()}/schemes`;
+    }
+
     getOptions(options) {
         const newOptions = Object.assign({}, options);
 
         const headers = {
             [HEADER_REQUESTED_WITH]: 'XMLHttpRequest',
-            ...this.defaultHeaders
+            ...this.defaultHeaders,
         };
 
         if (this.token) {
@@ -244,23 +271,19 @@ export default class Client4 {
 
         return {
             ...newOptions,
-            headers
+            headers,
         };
     }
 
     // User Routes
 
-    createUser = async (user, data, emailHash, inviteId) => {
+    createUser = async (user, token, inviteId) => {
         this.trackEvent('api', 'api_users_create');
 
         const queryParams = {};
 
-        if (data) {
-            queryParams.d = data;
-        }
-
-        if (emailHash) {
-            queryParams.h = emailHash;
+        if (token) {
+            queryParams.t = token;
         }
 
         if (inviteId) {
@@ -273,10 +296,19 @@ export default class Client4 {
         );
     }
 
-    patchMe = async (user) => {
+    patchMe = async (userPatch) => {
         return this.doFetch(
             `${this.getUserRoute('me')}/patch`,
-            {method: 'put', body: JSON.stringify(user)}
+            {method: 'put', body: JSON.stringify(userPatch)}
+        );
+    }
+
+    patchUser = async (userPatch) => {
+        this.trackEvent('api', 'api_users_patch');
+
+        return this.doFetch(
+            `${this.getUserRoute(userPatch.id)}/patch`,
+            {method: 'put', body: JSON.stringify(userPatch)}
         );
     }
 
@@ -354,12 +386,12 @@ export default class Client4 {
 
         const request = {
             method: 'post',
-            body: formData
+            body: formData,
         };
 
         if (formData.getBoundary) {
             request.headers = {
-                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`
+                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
             };
         }
 
@@ -394,7 +426,7 @@ export default class Client4 {
             device_id: deviceId,
             login_id: loginId,
             password,
-            token
+            token,
         };
 
         if (ldapOnly) {
@@ -420,7 +452,7 @@ export default class Client4 {
             device_id: deviceId,
             id,
             password,
-            token
+            token,
         };
 
         const {headers, data} = await this.doFetchWithResponse(
@@ -506,11 +538,18 @@ export default class Client4 {
         );
     };
 
-    getProfilesInChannel = async (channelId, page = 0, perPage = PER_PAGE_DEFAULT) => {
+    getProfilesInChannel = async (channelId, page = 0, perPage = PER_PAGE_DEFAULT, sort = '') => {
         this.trackEvent('api', 'api_profiles_get_in_channel', {channel_id: channelId});
 
+        const serverVersion = this.getServerVersion();
+        let queryStringObj;
+        if (isMinimumServerVersion(serverVersion, 4, 7)) {
+            queryStringObj = {in_channel: channelId, page, per_page: perPage, sort};
+        } else {
+            queryStringObj = {in_channel: channelId, page, per_page: perPage};
+        }
         return this.doFetch(
-            `${this.getUsersRoute()}${buildQueryString({in_channel: channelId, page, per_page: perPage})}`,
+            `${this.getUsersRoute()}${buildQueryString(queryStringObj)}`,
             {method: 'get'}
         );
     };
@@ -732,6 +771,13 @@ export default class Client4 {
         );
     }
 
+    getUserAccessTokens = async (page = 0, perPage = PER_PAGE_DEFAULT) => {
+        return this.doFetch(
+            `${this.getUsersRoute()}/tokens${buildQueryString({page, per_page: perPage})}`,
+            {method: 'get'}
+        );
+    }
+
     revokeUserAccessToken = async (tokenId) => {
         this.trackEvent('api', 'api_users_revoke_access_token');
 
@@ -766,12 +812,32 @@ export default class Client4 {
         );
     };
 
+    deleteTeam = async (teamId) => {
+        this.trackEvent('api', 'api_teams_delete');
+
+        return this.doFetch(
+            `${this.getTeamRoute(teamId)}`,
+            {method: 'delete'}
+        );
+    };
+
     updateTeam = async (team) => {
         this.trackEvent('api', 'api_teams_update_name', {team_id: team.id});
 
         return this.doFetch(
             `${this.getTeamRoute(team.id)}`,
             {method: 'put', body: JSON.stringify(team)}
+        );
+    };
+
+    updateTeamScheme = async (teamId, schemeId) => {
+        const patch = {scheme_id: schemeId};
+
+        this.trackEvent('api', 'api_teams_update_scheme', {team_id: teamId, ...patch});
+
+        return this.doFetch(
+            `${this.getTeamSchemeRoute(teamId)}`,
+            {method: 'put', body: JSON.stringify(patch)}
         );
     };
 
@@ -789,9 +855,27 @@ export default class Client4 {
         );
     };
 
+    searchTeams = (term) => {
+        this.trackEvent('api', 'api_search_teams');
+
+        return this.doFetch(
+            `${this.getTeamsRoute()}/search`,
+            {method: 'post', body: JSON.stringify({term})}
+        );
+    };
+
     getTeam = async (teamId) => {
         return this.doFetch(
             this.getTeamRoute(teamId),
+            {method: 'get'}
+        );
+    };
+
+    getTeamByName = async (teamName) => {
+        this.trackEvent('api', 'api_teams_get_team_by_name');
+
+        return this.doFetch(
+            this.getTeamNameRoute(teamName),
             {method: 'get'}
         );
     };
@@ -862,10 +946,10 @@ export default class Client4 {
         );
     };
 
-    addToTeamFromInvite = async (hash = '', data = '', inviteId = '') => {
+    addToTeamFromInvite = async (token = '', inviteId = '') => {
         this.trackEvent('api', 'api_teams_invite_members');
 
-        const query = buildQueryString({hash, data, invite_id: inviteId});
+        const query = buildQueryString({token, invite_id: inviteId});
         return this.doFetch(
             `${this.getTeamsRoute()}/members/invite${query}`,
             {method: 'post'}
@@ -940,18 +1024,59 @@ export default class Client4 {
 
         const request = {
             method: 'post',
-            body: formData
+            body: formData,
         };
 
         if (formData.getBoundary) {
             request.headers = {
-                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`
+                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
             };
         }
 
         return this.doFetch(
             `${this.getTeamRoute(teamId)}/import`,
             request
+        );
+    };
+
+    getTeamIconUrl = (teamId, lastTeamIconUpdate) => {
+        const params = {};
+        if (lastTeamIconUpdate) {
+            params._ = lastTeamIconUpdate;
+        }
+
+        return `${this.getTeamRoute(teamId)}/image${buildQueryString(params)}`;
+    };
+
+    setTeamIcon = async (teamId, imageData) => {
+        this.trackEvent('api', 'api_team_set_team_icon');
+
+        const formData = new FormData();
+        formData.append('image', imageData);
+
+        const request = {
+            method: 'post',
+            body: formData,
+        };
+
+        if (formData.getBoundary) {
+            request.headers = {
+                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
+            };
+        }
+
+        return this.doFetch(
+            `${this.getTeamRoute(teamId)}/image`,
+            request
+        );
+    };
+
+    removeTeamIcon = async (teamId) => {
+        this.trackEvent('api', 'api_team_remove_team_icon');
+
+        return this.doFetch(
+            `${this.getTeamRoute(teamId)}/image`,
+            {method: 'delete'}
         );
     };
 
@@ -1002,12 +1127,21 @@ export default class Client4 {
         );
     };
 
-    patchChannel = async (channelId, patch) => {
+    convertChannelToPrivate = async (channelId) => {
+        this.trackEvent('api', 'api_channels_convert_to_private', {channel_id: channelId});
+
+        return this.doFetch(
+            `${this.getChannelRoute(channelId)}/convert`,
+            {method: 'post'}
+        );
+    };
+
+    patchChannel = async (channelId, channelPatch) => {
         this.trackEvent('api', 'api_channels_patch', {channel_id: channelId});
 
         return this.doFetch(
             `${this.getChannelRoute(channelId)}/patch`,
-            {method: 'put', body: JSON.stringify(patch)}
+            {method: 'put', body: JSON.stringify(channelPatch)}
         );
     };
 
@@ -1017,6 +1151,17 @@ export default class Client4 {
         return this.doFetch(
             `${this.getChannelMemberRoute(props.channel_id, props.user_id)}/notify_props`,
             {method: 'put', body: JSON.stringify(props)}
+        );
+    };
+
+    updateChannelScheme = async (channelId, schemeId) => {
+        const patch = {scheme_id: schemeId};
+
+        this.trackEvent('api', 'api_channels_update_scheme', {channel_id: channelId, ...patch});
+
+        return this.doFetch(
+            `${this.getChannelSchemeRoute(channelId)}`,
+            {method: 'put', body: JSON.stringify(patch)}
         );
     };
 
@@ -1032,6 +1177,15 @@ export default class Client4 {
     getChannelByName = async (teamId, channelName) => {
         return this.doFetch(
             `${this.getTeamRoute(teamId)}/channels/name/${channelName}`,
+            {method: 'get'}
+        );
+    };
+
+    getChannelByNameAndTeamName = async (teamName, channelName) => {
+        this.trackEvent('api', 'api_channel_get_by_name_and_teamName', {channel_name: channelName, team_name: teamName});
+
+        return this.doFetch(
+            `${this.getTeamNameRoute(teamName)}/channels/name/${channelName}`,
             {method: 'get'}
         );
     };
@@ -1126,6 +1280,13 @@ export default class Client4 {
         );
     };
 
+    autocompleteChannels = async (teamId, name) => {
+        return this.doFetch(
+            `${this.getTeamRoute(teamId)}/channels/autocomplete${buildQueryString({name})}`,
+            {method: 'get'}
+        );
+    };
+
     searchChannels = async (teamId, term) => {
         return this.doFetch(
             `${this.getTeamRoute(teamId)}/channels/search`,
@@ -1134,6 +1295,7 @@ export default class Client4 {
     };
 
     // Post Routes
+
     createPost = async (post) => {
         this.trackEvent('api', 'api_posts_create', {channel_id: post.channel_id});
 
@@ -1156,12 +1318,19 @@ export default class Client4 {
         );
     };
 
-    patchPost = async (post) => {
-        this.trackEvent('api', 'api_posts_patch', {channel_id: post.channel_id});
+    getPost = async (postId) => {
+        return this.doFetch(
+            `${this.getPostRoute(postId)}`,
+            {method: 'get'}
+        );
+    };
+
+    patchPost = async (postPatch) => {
+        this.trackEvent('api', 'api_posts_patch', {channel_id: postPatch.channel_id});
 
         return this.doFetch(
-            `${this.getPostRoute(post.id)}/patch`,
-            {method: 'put', body: JSON.stringify(post)}
+            `${this.getPostRoute(postPatch.id)}/patch`,
+            {method: 'put', body: JSON.stringify(postPatch)}
         );
     };
 
@@ -1337,12 +1506,12 @@ export default class Client4 {
 
         const request = {
             method: 'post',
-            body: fileFormData
+            body: fileFormData,
         };
 
         if (formBoundary) {
             request.headers = {
-                'Content-Type': `multipart/form-data; boundary=${formBoundary}`
+                'Content-Type': `multipart/form-data; boundary=${formBoundary}`,
             };
         }
 
@@ -1394,7 +1563,7 @@ export default class Client4 {
     logClientError = async (message, level = 'ERROR') => {
         if (!this.enableLogging) {
             throw {
-                message: 'Logging disabled.'
+                message: 'Logging disabled.',
             };
         }
 
@@ -1550,6 +1719,13 @@ export default class Client4 {
         );
     };
 
+    getAutocompleteCommandsList = async (teamId, page = 0, perPage = PER_PAGE_DEFAULT) => {
+        return this.doFetch(
+            `${this.getTeamRoute(teamId)}/commands/autocomplete${buildQueryString({page, per_page: perPage})}`,
+            {method: 'get'}
+        );
+    };
+
     getCustomTeamCommands = async (teamId) => {
         return this.doFetch(
             `${this.getCommandsRoute()}?team_id=${teamId}&custom_only=true`,
@@ -1664,12 +1840,12 @@ export default class Client4 {
 
         const request = {
             method: 'post',
-            body: formData
+            body: formData,
         };
 
         if (formData.getBoundary) {
             request.headers = {
-                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`
+                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
             };
         }
 
@@ -1679,9 +1855,23 @@ export default class Client4 {
         );
     };
 
-    getCustomEmojis = async (page = 0, perPage = PER_PAGE_DEFAULT) => {
+    getCustomEmoji = async (id) => {
         return this.doFetch(
-            `${this.getEmojisRoute()}${buildQueryString({page, per_page: perPage})}`,
+            `${this.getEmojisRoute()}/${id}`,
+            {method: 'get'}
+        );
+    };
+
+    getCustomEmojiByName = async (name) => {
+        return this.doFetch(
+            `${this.getEmojisRoute()}/name/${name}`,
+            {method: 'get'}
+        );
+    };
+
+    getCustomEmojis = async (page = 0, perPage = PER_PAGE_DEFAULT, sort = '') => {
+        return this.doFetch(
+            `${this.getEmojisRoute()}${buildQueryString({page, per_page: perPage, sort})}`,
             {method: 'get'}
         );
     };
@@ -1703,7 +1893,31 @@ export default class Client4 {
         return `${this.getEmojiRoute(id)}/image`;
     };
 
+    searchCustomEmoji = async (term, options = {}) => {
+        return this.doFetch(
+            `${this.getEmojisRoute()}/search`,
+            {method: 'post', body: JSON.stringify({term, ...options})}
+        );
+    };
+
+    autocompleteCustomEmoji = async (name) => {
+        return this.doFetch(
+            `${this.getEmojisRoute()}/autocomplete${buildQueryString({name})}`,
+            {method: 'get'}
+        );
+    };
+
+    // Timezone Routes
+
+    getTimezones = async () => {
+        return this.doFetch(
+            `${this.getTimezonesRoute()}`,
+            {method: 'get'}
+        );
+    };
+
     // Data Retention
+
     getDataRetentionPolicy = () => {
         return this.doFetch(
             `${this.getDataRetentionRoute()}/policy`,
@@ -1750,9 +1964,9 @@ export default class Client4 {
 
     // Admin Routes
 
-    getLogs = async (page = 0, perPage = PER_PAGE_DEFAULT) => {
+    getLogs = async (page = 0, perPage = LOGS_PER_PAGE_DEFAULT) => {
         return this.doFetch(
-            `${this.getBaseRoute()}/logs${buildQueryString({page, per_page: perPage})}`,
+            `${this.getBaseRoute()}/logs${buildQueryString({page, logs_per_page: perPage})}`,
             {method: 'get'}
         );
     };
@@ -1785,9 +1999,23 @@ export default class Client4 {
         );
     };
 
+    getEnvironmentConfig = async () => {
+        return this.doFetch(
+            `${this.getBaseRoute()}/config/environment`,
+            {method: 'get'}
+        );
+    };
+
     testEmail = async (config) => {
         return this.doFetch(
             `${this.getBaseRoute()}/email/test`,
+            {method: 'post', body: JSON.stringify(config)}
+        );
+    };
+
+    testS3Connection = async (config) => {
+        return this.doFetch(
+            `${this.getBaseRoute()}/file/s3_test`,
             {method: 'post', body: JSON.stringify(config)}
         );
     };
@@ -1833,12 +2061,12 @@ export default class Client4 {
 
         const request = {
             method: 'post',
-            body: formData
+            body: formData,
         };
 
         if (formData.getBoundary) {
             request.headers = {
-                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`
+                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
             };
         }
 
@@ -1884,7 +2112,7 @@ export default class Client4 {
             `${this.getBaseRoute()}/saml/certificate/public`,
             {
                 method: 'post',
-                body: formData
+                body: formData,
             }
         );
     };
@@ -1897,7 +2125,7 @@ export default class Client4 {
             `${this.getBaseRoute()}/saml/certificate/private`,
             {
                 method: 'post',
-                body: formData
+                body: formData,
             }
         );
     };
@@ -1910,7 +2138,7 @@ export default class Client4 {
             `${this.getBaseRoute()}/saml/certificate/idp`,
             {
                 method: 'post',
-                body: formData
+                body: formData,
             }
         );
     };
@@ -1958,12 +2186,12 @@ export default class Client4 {
 
         const request = {
             method: 'post',
-            body: formData
+            body: formData,
         };
 
         if (formData.getBoundary) {
             request.headers = {
-                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`
+                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
             };
         }
 
@@ -1987,6 +2215,93 @@ export default class Client4 {
         );
     };
 
+    // Role Routes
+
+    getRole = async (roleId) => {
+        return this.doFetch(
+            `${this.getRolesRoute()}/${roleId}`,
+            {method: 'get'}
+        );
+    };
+
+    getRoleByName = async (roleName) => {
+        return this.doFetch(
+            `${this.getRolesRoute()}/name/${roleName}`,
+            {method: 'get'}
+        );
+    };
+
+    getRolesByNames = async (rolesNames) => {
+        return this.doFetch(
+            `${this.getRolesRoute()}/names`,
+            {method: 'post', body: JSON.stringify(rolesNames)}
+        );
+    };
+
+    patchRole = async (roleId, rolePatch) => {
+        return this.doFetch(
+            `${this.getRolesRoute()}/${roleId}/patch`,
+            {method: 'put', body: JSON.stringify(rolePatch)}
+        );
+    };
+
+    // Scheme Routes
+
+    getSchemes = async (scope = '', page = 0, perPage = PER_PAGE_DEFAULT) => {
+        return this.doFetch(
+            `${this.getSchemesRoute()}${buildQueryString({scope, page, per_page: perPage})}`,
+            {method: 'get'}
+        );
+    };
+
+    createScheme = async (scheme) => {
+        this.trackEvent('api', 'api_schemes_create');
+
+        return this.doFetch(
+            `${this.getSchemesRoute()}`,
+            {method: 'post', body: JSON.stringify(scheme)}
+        );
+    };
+
+    getScheme = async (schemeId) => {
+        return this.doFetch(
+            `${this.getSchemesRoute()}/${schemeId}`,
+            {method: 'get'}
+        );
+    };
+
+    deleteScheme = async (schemeId) => {
+        this.trackEvent('api', 'api_schemes_delete');
+
+        return this.doFetch(
+            `${this.getSchemesRoute()}/${schemeId}`,
+            {method: 'delete'}
+        );
+    };
+
+    patchScheme = async (schemeId, schemePatch) => {
+        this.trackEvent('api', 'api_schemes_patch', {scheme_id: schemeId});
+
+        return this.doFetch(
+            `${this.getSchemesRoute()}/${schemeId}/patch`,
+            {method: 'put', body: JSON.stringify(schemePatch)}
+        );
+    };
+
+    getSchemeTeams = async (schemeId, page = 0, perPage = PER_PAGE_DEFAULT) => {
+        return this.doFetch(
+            `${this.getSchemesRoute()}/${schemeId}/teams${buildQueryString({page, per_page: perPage})}`,
+            {method: 'get'}
+        );
+    };
+
+    getSchemeChannels = async (schemeId, page = 0, perPage = PER_PAGE_DEFAULT) => {
+        return this.doFetch(
+            `${this.getSchemesRoute()}/${schemeId}/channels${buildQueryString({page, per_page: perPage})}`,
+            {method: 'get'}
+        );
+    };
+
     // Plugin Routes - EXPERIMENTAL - SUBJECT TO CHANGE
 
     uploadPlugin = async (fileData) => {
@@ -1997,12 +2312,12 @@ export default class Client4 {
 
         const request = {
             method: 'post',
-            body: formData
+            body: formData,
         };
 
         if (formData.getBoundary) {
             request.headers = {
-                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`
+                'Content-Type': `multipart/form-data; boundary=${formData.getBoundary()}`,
             };
         }
 
@@ -2015,6 +2330,13 @@ export default class Client4 {
     getPlugins = async () => {
         return this.doFetch(
             this.getPluginsRoute(),
+            {method: 'get'}
+        );
+    };
+
+    getPluginStatuses = async () => {
+        return this.doFetch(
+            `${this.getPluginsRoute()}/statuses`,
             {method: 'get'}
         );
     };
@@ -2066,8 +2388,8 @@ export default class Client4 {
             throw {
                 intl: {
                     id: 'mobile.request.invalid_response',
-                    defaultMessage: 'Received invalid response from the server.'
-                }
+                    defaultMessage: 'Received invalid response from the server.',
+                },
             };
         }
 
@@ -2077,7 +2399,7 @@ export default class Client4 {
             const serverVersion = headers.get(HEADER_X_VERSION_ID);
             if (serverVersion && this.serverVersion !== serverVersion) {
                 this.serverVersion = serverVersion;
-                EventEmitter.emit(General.CONFIG_CHANGED, serverVersion);
+                EventEmitter.emit(General.SERVER_VERSION_CHANGED, serverVersion);
             }
         }
 
@@ -2092,7 +2414,7 @@ export default class Client4 {
             return {
                 response,
                 headers,
-                data
+                data,
             };
         }
 
@@ -2106,7 +2428,7 @@ export default class Client4 {
             message: msg,
             server_error_id: data.id,
             status_code: data.status_code,
-            url
+            url,
         };
     };
 
@@ -2114,16 +2436,16 @@ export default class Client4 {
         const properties = Object.assign({category, type: event, user_actual_id: this.userId}, props);
         const options = {
             context: {
-                ip: '0.0.0.0'
+                ip: '0.0.0.0',
             },
             page: {
                 path: '',
                 referrer: '',
                 search: '',
                 title: '',
-                url: ''
+                url: '',
             },
-            anonymousId: '00000000000000000000000000'
+            anonymousId: '00000000000000000000000000',
         };
 
         if (global && global.window && global.window.analytics && global.window.analytics.initialized) {
@@ -2133,7 +2455,8 @@ export default class Client4 {
                 options.context = global.analytics_context;
             }
             global.analytics.track(Object.assign({
-                event: 'event'
+                event: 'event',
+                userId: this.diagnosticId,
             }, {properties}, options));
         }
     }

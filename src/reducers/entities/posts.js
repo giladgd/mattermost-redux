@@ -1,37 +1,84 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {PostTypes, SearchTypes, UserTypes} from 'action_types';
 import {Posts} from 'constants';
-import {comparePosts} from 'utils/post_utils';
+import {comparePosts, combineSystemPosts} from 'utils/post_utils';
 
-function handleReceivedPost(posts = {}, postsInChannel = {}, action) {
+function handleReceivedPost(posts = {}, postsInChannel = {}, postsInThread = {}, action) {
     const post = action.data;
     const channelId = post.channel_id;
 
     const nextPosts = {
         ...posts,
-        [post.id]: post
+        [post.id]: post,
     };
 
-    let nextPostsForChannel = postsInChannel;
+    let nextPostsInChannel = postsInChannel;
 
     // Only change postsInChannel if the order of the posts needs to change
-    if (!postsInChannel[channelId] || postsInChannel[channelId].indexOf(post.id) === -1) {
+    if (!postsInChannel[channelId] || !postsInChannel[channelId].includes(post.id)) {
         // If we don't already have the post, assume it's the most recent one
         const postsForChannel = postsInChannel[channelId] || [];
 
-        nextPostsForChannel = {...postsInChannel};
-        nextPostsForChannel[channelId] = [
+        nextPostsInChannel = {...postsInChannel};
+        nextPostsInChannel[channelId] = [
             post.id,
-            ...postsForChannel
+            ...postsForChannel,
         ];
     }
 
-    return {posts: nextPosts, postsInChannel: nextPostsForChannel};
+    let nextPostsInThread = postsInThread;
+    if (post.root_id && (!postsInThread[post.root_id] || !postsInThread[post.root_id].includes(post.id))) {
+        const postsForThread = postsInThread[post.root_id] || [];
+
+        nextPostsInThread = {...postsInThread};
+        nextPostsInThread[post.root_id] = [
+            post.id,
+            ...postsForThread,
+        ];
+    }
+
+    const withCombineSystemPosts = combineSystemPosts(nextPostsInChannel[channelId], nextPosts);
+    nextPostsInChannel[channelId] = withCombineSystemPosts.postsForChannel;
+
+    return {posts: withCombineSystemPosts.nextPosts, postsInChannel: nextPostsInChannel, postsInThread: nextPostsInThread};
 }
 
-function handleReceivedPosts(posts = {}, postsInChannel = {}, action) {
+function handleRemovePendingPost(posts = {}, postsInChannel = {}, postsInThread = {}, action) {
+    const pendingPostId = action.data.id;
+    const channelId = action.data.channel_id;
+    const pendingPost = posts[pendingPostId];
+
+    const nextPosts = {
+        ...posts,
+    };
+
+    Reflect.deleteProperty(nextPosts, pendingPostId);
+
+    let nextPostsInChannel = postsInChannel;
+
+    // Only change postsInChannel if the order of the posts needs to change
+    if (!postsInChannel[channelId] || postsInChannel[channelId].includes(pendingPostId)) {
+        // If we don't already have the post, assume it's the most recent one
+        const postsForChannel = postsInChannel[channelId] || [];
+
+        nextPostsInChannel = {...postsInChannel};
+        nextPostsInChannel[channelId] = postsForChannel.filter((postId) => postId !== pendingPostId);
+    }
+
+    let nextPostsInThread = postsInThread;
+    if (pendingPost.root_id && (!postsInThread[pendingPost.root_id] || postsInThread[pendingPost.root_id].includes(pendingPostId))) {
+        const postsForThread = postsInThread[pendingPost.root_id] || [];
+
+        nextPostsInThread = {...postsInThread};
+        nextPostsInThread[pendingPost.root_id] = postsForThread.filter((postId) => postId !== pendingPostId);
+    }
+
+    return {posts: nextPosts, postsInChannel: nextPostsInChannel, postsInThread: nextPostsInThread};
+}
+
+function handleReceivedPosts(posts = {}, postsInChannel = {}, postsInThread = {}, action) {
     const newPosts = action.data.posts;
     const channelId = action.channelId;
     const skipAddToChannel = action.skipAddToChannel;
@@ -39,11 +86,12 @@ function handleReceivedPosts(posts = {}, postsInChannel = {}, action) {
     // Change the state only if we have new posts,
     // otherwise there's no need to create a new object for the same state.
     if (!Object.keys(newPosts).length) {
-        return {posts, postsInChannel};
+        return {posts, postsInChannel, postsInThread};
     }
 
     const nextPosts = {...posts};
-    const nextPostsForChannel = {...postsInChannel};
+    const nextPostsInChannel = {...postsInChannel};
+    const nextPostsInThread = {...postsInThread};
     const postsForChannel = postsInChannel[channelId] ? [...postsInChannel[channelId]] : [];
 
     for (const newPost of Object.values(newPosts)) {
@@ -54,7 +102,7 @@ function handleReceivedPosts(posts = {}, postsInChannel = {}, action) {
                     ...newPost,
                     state: Posts.POST_DELETED,
                     file_ids: [],
-                    has_reactions: false
+                    has_reactions: false,
                 };
             } else {
                 continue;
@@ -66,7 +114,7 @@ function handleReceivedPosts(posts = {}, postsInChannel = {}, action) {
             nextPosts[newPost.id] = newPost;
         }
 
-        if (!skipAddToChannel && postsForChannel.indexOf(newPost.id) === -1) {
+        if (!skipAddToChannel && !postsForChannel.includes(newPost.id)) {
             // Just add the post id to the end of the order and we'll sort it out later
             postsForChannel.push(newPost.id);
         }
@@ -80,6 +128,22 @@ function handleReceivedPosts(posts = {}, postsInChannel = {}, action) {
                 postsForChannel.splice(index, 1);
             }
         }
+
+        if (!newPost.root_id) {
+            continue;
+        }
+
+        const postsForThread = nextPostsInThread[newPost.root_id] ? [...nextPostsInThread[newPost.root_id]] : [];
+        if (!postsForThread.includes(newPost.id)) {
+            postsForThread.push(newPost.id);
+        }
+
+        const index = postsForThread.indexOf(newPost.pending_post_id);
+        if (index !== -1) {
+            postsForThread.splice(index, 1);
+        }
+
+        nextPostsInThread[newPost.root_id] = postsForThread;
     }
 
     // Sort to ensure that the most recent posts are first, with pending
@@ -88,14 +152,88 @@ function handleReceivedPosts(posts = {}, postsInChannel = {}, action) {
         return comparePosts(nextPosts[a], nextPosts[b]);
     });
 
-    nextPostsForChannel[channelId] = postsForChannel;
+    const withCombineSystemPosts = combineSystemPosts(postsForChannel, nextPosts, channelId);
+    nextPostsInChannel[channelId] = withCombineSystemPosts.postsForChannel;
 
-    return {posts: nextPosts, postsInChannel: nextPostsForChannel};
+    return {posts: withCombineSystemPosts.nextPosts, postsInChannel: nextPostsInChannel, postsInThread: nextPostsInThread};
 }
 
-function handlePostsFromSearch(posts = {}, postsInChannel = {}, action) {
+function handlePendingPosts(pendingPostIds = [], action) {
+    switch (action.type) {
+    case PostTypes.RECEIVED_NEW_POST: {
+        const post = action.data;
+        const nextPendingPostIds = [...pendingPostIds];
+        if (post.pending_post_id && !nextPendingPostIds.includes(post.pending_post_id)) {
+            nextPendingPostIds.push(post.pending_post_id);
+        }
+        return nextPendingPostIds;
+    }
+    case PostTypes.REMOVE_PENDING_POST: {
+        const pendingPostId = action.data.id;
+        const nextPendingPostIds = pendingPostIds.filter((postId) => postId !== pendingPostId);
+        return nextPendingPostIds;
+    }
+    case PostTypes.RECEIVED_POSTS: {
+        const newPosts = action.data.posts;
+        const nextPendingPostIds = [...pendingPostIds];
+
+        if (!Object.keys(newPosts).length) {
+            return pendingPostIds;
+        }
+
+        for (const newPost of Object.values(newPosts)) {
+            const index = nextPendingPostIds.indexOf(newPost.pending_post_id);
+            if (index !== -1) {
+                nextPendingPostIds.splice(index, 1);
+            }
+        }
+
+        return nextPendingPostIds;
+    }
+    default:
+        return pendingPostIds;
+    }
+}
+
+function handleSendingPosts(sendingPostIds = [], action) {
+    switch (action.type) {
+    case PostTypes.RECEIVED_NEW_POST: {
+        const sendingPostId = action.data.id;
+        if (sendingPostIds.includes(sendingPostId)) {
+            return sendingPostIds;
+        }
+
+        return [
+            ...sendingPostIds,
+            sendingPostId,
+        ];
+    }
+    case PostTypes.RECEIVED_POST: {
+        const sendingPostId = action.data.id;
+        if (!sendingPostIds.includes(sendingPostId)) {
+            return sendingPostIds;
+        }
+
+        return sendingPostIds.filter((postId) => postId !== sendingPostId);
+    }
+    case PostTypes.RECEIVED_POSTS: {
+        const postIds = Object.values(action.data.posts).map((post) => post.pending_post_id);
+
+        const nextSendingPostIds = sendingPostIds.filter((sendingPostId) => !postIds.includes(sendingPostId));
+        if (nextSendingPostIds.length === sendingPostIds.length) {
+            return sendingPostIds;
+        }
+
+        return nextSendingPostIds;
+    }
+    default:
+        return sendingPostIds;
+    }
+}
+
+function handlePostsFromSearch(posts = {}, postsInChannel = {}, postsInThread = {}, action) {
     const newPosts = action.data.posts;
-    let info = {posts, postsInChannel};
+    let info = {posts, postsInChannel, postsInThread};
     const postsForChannel = new Map();
 
     const postIds = Object.keys(newPosts);
@@ -110,27 +248,31 @@ function handlePostsFromSearch(posts = {}, postsInChannel = {}, action) {
     }
 
     postsForChannel.forEach((postList, channelId) => {
-        info = handleReceivedPosts(info.posts, postsInChannel, {channelId, data: {posts: postList}});
+        info = handleReceivedPosts(info.posts, postsInChannel, postsInThread, {channelId, data: {posts: postList}});
     });
 
     return info;
 }
 
-function handlePostDeleted(posts = {}, postsInChannel = {}, action) {
+function handlePostDeleted(posts = {}, postsInChannel = {}, postsInThread = {}, action) {
     const post = action.data;
     const channelId = post.channel_id;
 
-    const nextPosts = {...posts};
-    const nextPostsForChannel = {...postsInChannel};
+    let nextPosts = posts;
+    let nextPostsForChannel = postsInChannel;
+    let nextPostsForThread = postsInThread;
 
     // We only need to do something if already have the post
     if (posts[post.id]) {
+        nextPosts = {...posts};
+        nextPostsForChannel = {...postsInChannel};
+
         // Mark the post as deleted
         nextPosts[post.id] = {
             ...posts[post.id],
             state: Posts.POST_DELETED,
             file_ids: [],
-            has_reactions: false
+            has_reactions: false,
         };
 
         // Remove any of its comments
@@ -148,17 +290,23 @@ function handlePostDeleted(posts = {}, postsInChannel = {}, action) {
         }
 
         nextPostsForChannel[channelId] = postsForChannel;
+
+        if (postsInThread[post.id]) {
+            nextPostsForThread = {...postsInThread};
+            Reflect.deleteProperty(nextPostsForThread, post.id);
+        }
     }
 
-    return {posts: nextPosts, postsInChannel: nextPostsForChannel};
+    return {posts: nextPosts, postsInChannel: nextPostsForChannel, postsInThread: nextPostsForThread};
 }
 
-function handleRemovePost(posts = {}, postsInChannel = {}, action) {
+function handleRemovePost(posts = {}, postsInChannel = {}, postsInThread = {}, action) {
     const post = action.data;
     const channelId = post.channel_id;
 
     let nextPosts = posts;
     let nextPostsForChannel = postsInChannel;
+    let nextPostsForThread;
 
     // We only need to do something if already have the post
     if (nextPosts[post.id]) {
@@ -191,45 +339,67 @@ function handleRemovePost(posts = {}, postsInChannel = {}, action) {
         }
 
         nextPostsForChannel[channelId] = postsForChannel;
+
+        if (postsInThread[post.id]) {
+            nextPostsForThread = nextPostsForThread || {...postsInThread};
+            Reflect.deleteProperty(nextPostsForThread, post.id);
+        }
+
+        if (postsInThread[post.root_id]) {
+            nextPostsForThread = nextPostsForThread || {...postsInThread};
+            const threadPosts = [...postsInThread[post.root_id]];
+            const threadIndex = threadPosts.indexOf(post.id);
+            if (threadIndex !== -1) {
+                threadPosts.splice(threadIndex, 1);
+            }
+            nextPostsForThread[post.root_id] = threadPosts;
+        }
     }
 
-    return {posts: nextPosts, postsInChannel: nextPostsForChannel};
+    return {posts: nextPosts, postsInChannel: nextPostsForChannel, postsInThread: nextPostsForThread || postsInThread};
 }
 
-function handlePosts(posts = {}, postsInChannel = {}, action) {
+function handlePosts(posts = {}, postsInChannel = {}, postsInThread = {}, action) {
     switch (action.type) {
     case PostTypes.RECEIVED_POST: {
         const nextPosts = {...posts};
         nextPosts[action.data.id] = action.data;
         return {
             posts: nextPosts,
-            postsInChannel
+            postsInChannel,
+            postsInThread,
         };
     }
     case PostTypes.RECEIVED_NEW_POST:
-        return handleReceivedPost(posts, postsInChannel, action);
+        return handleReceivedPost(posts, postsInChannel, postsInThread, action);
+    case PostTypes.REMOVE_PENDING_POST: {
+        return handleRemovePendingPost(posts, postsInChannel, postsInThread, action);
+    }
     case PostTypes.RECEIVED_POSTS:
-        return handleReceivedPosts(posts, postsInChannel, action);
+        return handleReceivedPosts(posts, postsInChannel, postsInThread, action);
     case PostTypes.POST_DELETED:
         if (action.data) {
-            return handlePostDeleted(posts, postsInChannel, action);
+            return handlePostDeleted(posts, postsInChannel, postsInThread, action);
         }
-        return {posts, postsInChannel};
+        return {posts, postsInChannel, postsInThread};
     case PostTypes.REMOVE_POST:
-        return handleRemovePost(posts, postsInChannel, action);
+        return handleRemovePost(posts, postsInChannel, postsInThread, action);
 
     case SearchTypes.RECEIVED_SEARCH_POSTS:
-        return handlePostsFromSearch(posts, postsInChannel, action);
+    case SearchTypes.RECEIVED_SEARCH_FLAGGED_POSTS:
+        return handlePostsFromSearch(posts, postsInChannel, postsInThread, action);
 
     case UserTypes.LOGOUT_SUCCESS:
         return {
             posts: {},
-            postsInChannel: {}
+            postsInChannel: {},
+            postsInThread: {},
         };
     default:
         return {
             posts,
-            postsInChannel
+            postsInChannel,
+            postsInThread,
         };
     }
 }
@@ -247,6 +417,8 @@ function selectedPostId(state = '', action) {
 
 function currentFocusedPostId(state = '', action) {
     switch (action.type) {
+    case PostTypes.RECEIVED_FOCUSED_POST:
+        return action.data;
     case UserTypes.LOGOUT_SUCCESS:
         return '';
     default:
@@ -265,7 +437,7 @@ function reactions(state = {}, action) {
 
         return {
             ...state,
-            [action.postId]: nextReactions
+            [action.postId]: nextReactions,
         };
     }
     case PostTypes.RECEIVED_REACTION: {
@@ -275,7 +447,7 @@ function reactions(state = {}, action) {
 
         return {
             ...state,
-            [reaction.post_id]: nextReactions
+            [reaction.post_id]: nextReactions,
         };
     }
     case PostTypes.REACTION_DELETED: {
@@ -289,7 +461,7 @@ function reactions(state = {}, action) {
 
         return {
             ...state,
-            [reaction.post_id]: nextReactions
+            [reaction.post_id]: nextReactions,
         };
     }
     case PostTypes.POST_DELETED:
@@ -343,7 +515,7 @@ function messagesHistory(state = {}, action) {
 
         return {
             messages: nextMessages,
-            index: nextIndex
+            index: nextIndex,
         };
     }
     case PostTypes.RESET_HISTORY_INDEX: {
@@ -356,7 +528,7 @@ function messagesHistory(state = {}, action) {
         nextIndex[action.data] = messages.length;
         return {
             messages: state.messages,
-            index: nextIndex
+            index: nextIndex,
         };
     }
     case PostTypes.MOVE_HISTORY_INDEX_BACK: {
@@ -370,7 +542,7 @@ function messagesHistory(state = {}, action) {
         }
         return {
             messages: state.messages,
-            index: nextIndex
+            index: nextIndex,
         };
     }
     case PostTypes.MOVE_HISTORY_INDEX_FORWARD: {
@@ -385,7 +557,7 @@ function messagesHistory(state = {}, action) {
         }
         return {
             messages: state.messages,
-            index: nextIndex
+            index: nextIndex,
         };
     }
     case UserTypes.LOGOUT_SUCCESS: {
@@ -395,7 +567,7 @@ function messagesHistory(state = {}, action) {
 
         return {
             messages: [],
-            index
+            index,
         };
     }
     default:
@@ -404,15 +576,24 @@ function messagesHistory(state = {}, action) {
 }
 
 export default function(state = {}, action) {
-    const {posts, postsInChannel} = handlePosts(state.posts, state.postsInChannel, action);
+    const {posts, postsInChannel, postsInThread} = handlePosts(state.posts, state.postsInChannel, state.postsInThread, action);
 
     const nextState = {
 
         // Object mapping post ids to post objects
         posts,
 
-        // Object mapping channel ids to an list of posts ids in that channel with the most recent post first
+        // Array that contains the pending post ids for those messages that are in transition to being created
+        pendingPostIds: handlePendingPosts(state.pendingPostIds, action),
+
+        // Array that contains the sending post ids for those messages being sent to the server.
+        sendingPostIds: handleSendingPosts(state.sendingPostIds, action),
+
+        // Object mapping channel ids to an array of posts ids in that channel with the most recent post first
         postsInChannel,
+
+        // Object mapping post root ids to an array of posts ids in that thread with no guaranteed order
+        postsInThread,
 
         // The current selected post
         selectedPostId: selectedPostId(state.selectedPostId, action),
@@ -427,10 +608,13 @@ export default function(state = {}, action) {
         openGraph: openGraph(state.openGraph, action),
 
         // History of posts and comments
-        messagesHistory: messagesHistory(state.messagesHistory, action)
+        messagesHistory: messagesHistory(state.messagesHistory, action),
     };
 
     if (state.posts === nextState.posts && state.postsInChannel === nextState.postsInChannel &&
+        state.postsInThread === nextState.postsInThread &&
+        state.pendingPostIds === nextState.pendingPostIds &&
+        state.sendingPostIds === nextState.sendingPostIds &&
         state.selectedPostId === nextState.selectedPostId &&
         state.currentFocusedPostId === nextState.currentFocusedPostId &&
         state.reactions === nextState.reactions &&

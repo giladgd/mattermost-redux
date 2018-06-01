@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import fs from 'fs';
 import assert from 'assert';
@@ -36,7 +36,7 @@ describe('Actions.Admin', () => {
                 '[2017/04/04 14:56:19 EDT] [INFO] Starting Server...',
                 '[2017/04/04 14:56:19 EDT] [INFO] Server is listening on :8065',
                 '[2017/04/04 15:01:48 EDT] [INFO] Stopping Server...',
-                '[2017/04/04 15:01:48 EDT] [INFO] Closing SqlStore'
+                '[2017/04/04 15:01:48 EDT] [INFO] Closing SqlStore',
             ]);
 
         await Actions.getLogs()(store.dispatch, store.getState);
@@ -64,8 +64,8 @@ describe('Actions.Admin', () => {
                     action: '/api/v4/teams/o5pjxhkq8br8fj6xnidt7hm3ja',
                     extra_info: '',
                     ip_address: '127.0.0.1',
-                    session_id: 'u3yb6bqe6fg15bu4stzyto8rgh'
-                }
+                    session_id: 'u3yb6bqe6fg15bu4stzyto8rgh',
+                },
             ]);
 
         await Actions.getAudits()(store.dispatch, store.getState);
@@ -86,8 +86,8 @@ describe('Actions.Admin', () => {
             get('/config').
             reply(200, {
                 TeamSettings: {
-                    SiteName: 'Mattermost'
-                }
+                    SiteName: 'Mattermost',
+                },
             });
 
         await Actions.getConfig()(store.dispatch, store.getState);
@@ -109,8 +109,8 @@ describe('Actions.Admin', () => {
             get('/config').
             reply(200, {
                 TeamSettings: {
-                    SiteName: 'Mattermost'
-                }
+                    SiteName: 'Mattermost',
+                },
             });
 
         const {data} = await Actions.getConfig()(store.dispatch, store.getState);
@@ -159,6 +159,34 @@ describe('Actions.Admin', () => {
         }
     });
 
+    it('getEnvironmentConfig', async () => {
+        nock(Client4.getBaseRoute()).
+            get('/config/environment').
+            reply(200, {
+                ServiceSettings: {
+                    SiteURL: true,
+                },
+                TeamSettings: {
+                    SiteName: true,
+                },
+            });
+
+        await store.dispatch(Actions.getEnvironmentConfig());
+
+        const state = store.getState();
+        const request = state.requests.admin.getEnvironmentConfig;
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error('getEnvironmentConfig request failed');
+        }
+
+        const config = state.entities.admin.environmentConfig;
+        assert.ok(config);
+        assert.ok(config.ServiceSettings);
+        assert.ok(config.ServiceSettings.SiteURL);
+        assert.ok(config.TeamSettings);
+        assert.ok(config.TeamSettings.SiteName);
+    });
+
     it('testEmail', async () => {
         nock(Client4.getBaseRoute()).
             get('/config').
@@ -176,6 +204,26 @@ describe('Actions.Admin', () => {
         const request = state.requests.admin.testEmail;
         if (request.status === RequestStatus.FAILURE) {
             throw new Error('testEmail request failed');
+        }
+    });
+
+    it('testS3Connection', async () => {
+        nock(Client4.getBaseRoute()).
+            get('/config').
+            reply(200, {});
+
+        const {data: config} = await Actions.getConfig()(store.dispatch, store.getState);
+
+        nock(Client4.getBaseRoute()).
+            post('/file/s3_test').
+            reply(200, OK_RESPONSE);
+
+        await Actions.testS3Connection(config)(store.dispatch, store.getState);
+
+        const state = store.getState();
+        const request = state.requests.admin.testS3Connection;
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error('testS3Connection request failed');
         }
     });
 
@@ -223,7 +271,7 @@ describe('Actions.Admin', () => {
             emails: 'joram@example.com',
             keywords: 'testkeyword',
             start_at: 1457654400000,
-            end_at: 1458000000000
+            end_at: 1458000000000,
         };
 
         nock(Client4.getBaseRoute()).
@@ -239,7 +287,7 @@ describe('Actions.Admin', () => {
                 start_at: 1457654400000,
                 end_at: 1458000000000,
                 keywords: 'testkeyword',
-                emails: 'joram@example.com'
+                emails: 'joram@example.com',
             });
 
         const {data: created} = await Actions.createComplianceReport(job)(store.dispatch, store.getState);
@@ -266,7 +314,7 @@ describe('Actions.Admin', () => {
             emails: 'joram@example.com',
             keywords: 'testkeyword',
             start_at: 1457654400000,
-            end_at: 1458000000000
+            end_at: 1458000000000,
         };
 
         nock(Client4.getBaseRoute()).
@@ -282,7 +330,7 @@ describe('Actions.Admin', () => {
                 start_at: 1457654400000,
                 end_at: 1458000000000,
                 keywords: 'testkeyword',
-                emails: 'joram@example.com'
+                emails: 'joram@example.com',
             });
 
         const {data: report} = await Actions.createComplianceReport(job)(store.dispatch, store.getState);
@@ -315,7 +363,7 @@ describe('Actions.Admin', () => {
             emails: 'joram@example.com',
             keywords: 'testkeyword',
             start_at: 1457654400000,
-            end_at: 1458000000000
+            end_at: 1458000000000,
         };
 
         nock(Client4.getBaseRoute()).
@@ -331,7 +379,7 @@ describe('Actions.Admin', () => {
                 start_at: 1457654400000,
                 end_at: 1458000000000,
                 keywords: 'testkeyword',
-                emails: 'joram@example.com'
+                emails: 'joram@example.com',
             });
 
         const {data: report} = await Actions.createComplianceReport(job)(store.dispatch, store.getState);
@@ -386,8 +434,8 @@ describe('Actions.Admin', () => {
             reply(200, [
                 {
                     id: 'someid',
-                    version: 'someversion'
-                }
+                    version: 'someversion',
+                },
             ]);
 
         await Actions.getClusterStatus()(store.dispatch, store.getState);
@@ -453,7 +501,7 @@ describe('Actions.Admin', () => {
             reply(200, {
                 public_certificate_file: true,
                 private_key_file: true,
-                idp_certificate_file: true
+                idp_certificate_file: true,
             });
 
         await Actions.getSamlCertificateStatus()(store.dispatch, store.getState);
@@ -826,6 +874,41 @@ describe('Actions.Admin', () => {
         assert.ok(plugins[testPlugin.id].active);
         assert.ok(plugins[testPlugin2.id]);
         assert.ok(!plugins[testPlugin2.id].active);
+    });
+
+    it('getPluginStatuses', async () => {
+        if (TestHelper.isLiveServer()) {
+            console.log('Skipping mock-only test');
+            return;
+        }
+
+        const testPluginStatus = {
+            plugin_id: 'testplugin',
+            state: 1,
+        };
+        const testPluginStatus2 = {
+            plugin_id: 'testplugin2',
+            state: 0,
+        };
+
+        nock(Client4.getBaseRoute()).
+            get('/plugins/statuses').
+            reply(200, [testPluginStatus, testPluginStatus2]);
+
+        await Actions.getPluginStatuses()(store.dispatch, store.getState);
+
+        const state = store.getState();
+        const request = state.requests.admin.getPluginStatuses;
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error('getPluginStatuses request failed err=' + request.error);
+        }
+
+        const pluginStatuses = state.entities.admin.pluginStatuses;
+        assert.ok(pluginStatuses);
+        assert.ok(pluginStatuses[testPluginStatus.plugin_id]);
+        assert.ok(pluginStatuses[testPluginStatus.plugin_id].active);
+        assert.ok(pluginStatuses[testPluginStatus2.plugin_id]);
+        assert.ok(!pluginStatuses[testPluginStatus2.plugin_id].active);
     });
 
     it('removePlugin', async () => {

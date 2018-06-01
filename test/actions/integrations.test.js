@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 import nock from 'nock';
@@ -37,7 +37,7 @@ describe('Actions.Integrations', () => {
             {
                 channel_id: TestHelper.basicChannel.id,
                 display_name: 'test',
-                description: 'test'
+                description: 'test',
             }
         )(store.dispatch, store.getState);
 
@@ -61,7 +61,7 @@ describe('Actions.Integrations', () => {
             {
                 channel_id: TestHelper.basicChannel.id,
                 display_name: 'test',
-                description: 'test'
+                description: 'test',
             }
         )(store.dispatch, store.getState);
 
@@ -91,7 +91,7 @@ describe('Actions.Integrations', () => {
             {
                 channel_id: TestHelper.basicChannel.id,
                 display_name: 'test',
-                description: 'test'
+                description: 'test',
             }
         )(store.dispatch, store.getState);
 
@@ -122,7 +122,7 @@ describe('Actions.Integrations', () => {
             {
                 channel_id: TestHelper.basicChannel.id,
                 display_name: 'test',
-                description: 'test'
+                description: 'test',
             }
         )(store.dispatch, store.getState);
 
@@ -151,7 +151,7 @@ describe('Actions.Integrations', () => {
             {
                 channel_id: TestHelper.basicChannel.id,
                 display_name: 'test',
-                description: 'test'
+                description: 'test',
             }
         )(store.dispatch, store.getState);
 
@@ -185,7 +185,7 @@ describe('Actions.Integrations', () => {
                 team_id: TestHelper.basicTeam.id,
                 display_name: 'test',
                 trigger_words: [TestHelper.generateId()],
-                callback_urls: ['http://localhost/notarealendpoint']
+                callback_urls: ['http://localhost/notarealendpoint'],
             }
         )(store.dispatch, store.getState);
 
@@ -211,7 +211,7 @@ describe('Actions.Integrations', () => {
                 team_id: TestHelper.basicTeam.id,
                 display_name: 'test',
                 trigger_words: [TestHelper.generateId()],
-                callback_urls: ['http://localhost/notarealendpoint']
+                callback_urls: ['http://localhost/notarealendpoint'],
             }
         )(store.dispatch, store.getState);
 
@@ -243,7 +243,7 @@ describe('Actions.Integrations', () => {
                 team_id: TestHelper.basicTeam.id,
                 display_name: 'test',
                 trigger_words: [TestHelper.generateId()],
-                callback_urls: ['http://localhost/notarealendpoint']
+                callback_urls: ['http://localhost/notarealendpoint'],
             }
         )(store.dispatch, store.getState);
 
@@ -276,7 +276,7 @@ describe('Actions.Integrations', () => {
                 team_id: TestHelper.basicTeam.id,
                 display_name: 'test',
                 trigger_words: [TestHelper.generateId()],
-                callback_urls: ['http://localhost/notarealendpoint']
+                callback_urls: ['http://localhost/notarealendpoint'],
             }
         )(store.dispatch, store.getState);
 
@@ -307,7 +307,7 @@ describe('Actions.Integrations', () => {
                 team_id: TestHelper.basicTeam.id,
                 display_name: 'test',
                 trigger_words: [TestHelper.generateId()],
-                callback_urls: ['http://localhost/notarealendpoint']
+                callback_urls: ['http://localhost/notarealendpoint'],
             }
         )(store.dispatch, store.getState);
 
@@ -340,7 +340,7 @@ describe('Actions.Integrations', () => {
                 team_id: TestHelper.basicTeam.id,
                 display_name: 'test',
                 trigger_words: [TestHelper.generateId()],
-                callback_urls: ['http://localhost/notarealendpoint']
+                callback_urls: ['http://localhost/notarealendpoint'],
             }
         )(store.dispatch, store.getState);
 
@@ -358,6 +358,94 @@ describe('Actions.Integrations', () => {
         const hooks = state.entities.integrations.outgoingHooks;
         assert.ok(hooks[created.id]);
         assert.ok(hooks[created.id].token !== created.token);
+    });
+
+    it('getCommands', async () => {
+        const noTeamCommands = store.getState().entities.integrations.commands;
+        const noSystemCommands = store.getState().entities.integrations.systemCommands;
+        assert.equal(Object.keys({...noTeamCommands, ...noSystemCommands}).length, 0);
+
+        nock(Client4.getTeamsRoute()).
+            post('').
+            reply(201, TestHelper.fakeTeamWithId());
+
+        const {data: team} = await TeamsActions.createTeam(
+            TestHelper.fakeTeam()
+        )(store.dispatch, store.getState);
+
+        const teamCommand = TestHelper.testCommand(team.id);
+
+        nock(Client4.getCommandsRoute()).
+            post('').
+            reply(201, {...teamCommand, token: TestHelper.generateId(), id: TestHelper.generateId()});
+
+        const {data: created} = await Actions.addCommand(
+            teamCommand
+        )(store.dispatch, store.getState);
+
+        nock(Client4.getCommandsRoute()).
+            get('').
+            query(true).
+            reply(200, [created, {
+                trigger: 'system-command',
+            }]);
+
+        await Actions.getCommands(
+            team.id
+        )(store.dispatch, store.getState);
+
+        const request = store.getState().requests.integrations.getCommands;
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(request.error));
+        }
+
+        const teamCommands = store.getState().entities.integrations.commands;
+        const executableCommands = store.getState().entities.integrations.executableCommands;
+        assert.ok(Object.keys({...teamCommands, ...executableCommands}).length);
+    });
+
+    it('getAutocompleteCommands', async () => {
+        const noTeamCommands = store.getState().entities.integrations.commands;
+        const noSystemCommands = store.getState().entities.integrations.systemCommands;
+        assert.equal(Object.keys({...noTeamCommands, ...noSystemCommands}).length, 0);
+
+        nock(Client4.getTeamsRoute()).
+            post('').
+            reply(201, TestHelper.fakeTeamWithId());
+
+        const {data: team} = await TeamsActions.createTeam(
+            TestHelper.fakeTeam()
+        )(store.dispatch, store.getState);
+
+        const teamCommandWithAutocomplete = TestHelper.testCommand(team.id);
+
+        nock(Client4.getCommandsRoute()).
+            post('').
+            reply(201, {...teamCommandWithAutocomplete, token: TestHelper.generateId(), id: TestHelper.generateId()});
+
+        const {data: createdWithAutocomplete} = await Actions.addCommand(
+            teamCommandWithAutocomplete
+        )(store.dispatch, store.getState);
+
+        nock(`${Client4.getTeamRoute(team.id)}/commands/autocomplete`).
+            get('').
+            query(true).
+            reply(200, [createdWithAutocomplete, {
+                trigger: 'system-command',
+            }]);
+
+        await Actions.getAutocompleteCommands(
+            team.id
+        )(store.dispatch, store.getState);
+
+        const request = store.getState().requests.integrations.getAutocompleteCommands;
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(request.error));
+        }
+
+        const teamCommands = store.getState().entities.integrations.commands;
+        const systemCommands = store.getState().entities.integrations.systemCommands;
+        assert.equal(Object.keys({...teamCommands, ...systemCommands}).length, 2);
     });
 
     it('getCustomTeamCommands', async () => {
@@ -411,6 +499,32 @@ describe('Actions.Integrations', () => {
         const actual = commands[created.id];
         const expected = created;
         assert.equal(JSON.stringify(actual), JSON.stringify(expected));
+    });
+
+    it('executeCommand', async () => {
+        nock(Client4.getTeamsRoute()).
+            post('').
+            reply(201, TestHelper.fakeTeamWithId());
+
+        const {data: team} = await TeamsActions.createTeam(
+            TestHelper.fakeTeam()
+        )(store.dispatch, store.getState);
+
+        const args = {
+            channel_id: TestHelper.basicChannel.id,
+            team_id: team.id,
+        };
+
+        nock(`${Client4.getCommandsRoute()}/execute`).
+            post('').
+            reply(200, []);
+
+        await Actions.executeCommand('/echo message 5', args);
+
+        const request = store.getState().requests.integrations.executeCommand;
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(request.error));
+        }
     });
 
     it('addCommand', async () => {

@@ -1,5 +1,6 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 const WebsocketEvents = {
     POSTED: 'posted',
@@ -9,6 +10,7 @@ const WebsocketEvents = {
     CHANNEL_DELETED: 'channel_deleted',
     CHANNEL_UPDATED: 'channel_updated',
     CHANNEL_VIEWED: 'channel_viewed',
+    CHANNEL_MEMBER_UPDATED: 'channel_member_updated',
     DIRECT_ADDED: 'direct_added',
     ADDED_TO_TEAM: 'added_to_team',
     LEAVE_TEAM: 'leave_team',
@@ -16,6 +18,9 @@ const WebsocketEvents = {
     USER_ADDED: 'user_added',
     USER_REMOVED: 'user_removed',
     USER_UPDATED: 'user_updated',
+    ROLE_ADDED: 'role_added',
+    ROLE_REMOVED: 'role_removed',
+    ROLE_UPDATED: 'role_updated',
     TYPING: 'typing',
     STOP_TYPING: 'stop_typing',
     PREFERENCE_CHANGED: 'preference_changed',
@@ -27,7 +32,10 @@ const WebsocketEvents = {
     WEBRTC: 'webrtc',
     REACTION_ADDED: 'reaction_added',
     REACTION_REMOVED: 'reaction_removed',
-    EMOJI_ADDED: 'emoji_added'
+    EMOJI_ADDED: 'emoji_added',
+    LICENSE_CHANGED: 'license_changed',
+    CONFIG_CHANGED: 'config_changed',
+    PLUGIN_STATUSES_CHANGED: 'plugin_statuses_changed',
 };
 
 export default WebsocketEvents;

@@ -1,10 +1,14 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import {combineReducers} from 'redux';
 import {AlertTypes, UserTypes} from 'action_types';
 
-function alertStack(state = [], action) {
+import type {AlertType} from '../../types/alerts';
+import type {GenericAction} from '../../types/actions';
+
+function alertStack(state: Array<AlertType> = [], action: GenericAction) {
     const nextState = [...state];
 
     switch (action.type) {
@@ -27,7 +31,7 @@ function alertStack(state = [], action) {
 export default combineReducers({
 
     // array acting as a stack where every object is an alert
-    alertStack
+    alertStack,
 
 });
 

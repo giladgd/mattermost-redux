@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {batchActions} from 'redux-batched-actions';
 import {Client4} from 'client';
@@ -7,14 +7,10 @@ import {UserTypes} from 'action_types';
 import {logError} from './errors';
 const HTTP_UNAUTHORIZED = 401;
 
-export async function forceLogoutIfNecessary(err, dispatch) {
-    if (err.status_code === HTTP_UNAUTHORIZED && err.url.indexOf('/login') === -1) {
-        dispatch({type: UserTypes.LOGOUT_REQUEST});
-        try {
-            await Client4.logout();
-        } catch (error) {
-            logError(error)(dispatch);
-        }
+export function forceLogoutIfNecessary(err, dispatch, getState) {
+    const {currentUserId} = getState().entities.users;
+    if (err.status_code === HTTP_UNAUTHORIZED && err.url.indexOf('/login') === -1 && currentUserId) {
+        Client4.setToken('');
         dispatch({type: UserTypes.LOGOUT_SUCCESS});
     }
 }
@@ -29,21 +25,21 @@ function dispatcher(type, data, dispatch, getState) {
 
 export function requestData(type) {
     return {
-        type
+        type,
     };
 }
 
 export function requestSuccess(type, data) {
     return {
         type,
-        data
+        data,
     };
 }
 
 export function requestFailure(type, error) {
     return {
         type,
-        error
+        error,
     };
 }
 
@@ -55,10 +51,10 @@ export function bindClientFunc(clientFunc, request, success, failure, ...args) {
         try {
             data = await clientFunc(...args);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 requestFailure(failure, error),
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {data: null, error};
         }
@@ -106,7 +102,7 @@ export class FormattedError extends Error {
         this.intl = {
             id,
             defaultMessage,
-            values
+            values,
         };
     }
 }

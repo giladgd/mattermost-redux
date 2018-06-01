@@ -1,5 +1,5 @@
-// Copyright (c) 2017 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 import {AsyncNodeStorage} from 'redux-persist-node-storage';
 import {createTransform, persistStore} from 'redux-persist';
 
@@ -19,9 +19,9 @@ export default async function testConfigureStore(preloadedState) {
         persistOptions: {
             debounce: 1000,
             transforms: [
-                storageTransform
+                storageTransform,
             ],
-            whitelist: []
+            whitelist: [],
         },
         retry: (action, retries) => 200 * (retries + 1),
         discard: (error, action, retries) => {
@@ -30,7 +30,7 @@ export default async function testConfigureStore(preloadedState) {
             }
 
             return retries >= 1;
-        }
+        },
     };
 
     const store = configureStore(preloadedState, {}, offlineConfig, () => ({}), {enableBuffer: false});

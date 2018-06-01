@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {combineReducers} from 'redux';
 import {UserTypes} from 'action_types';
@@ -14,7 +14,7 @@ function profilesToSet(state, action) {
 
     return {
         ...state,
-        [id]: nextSet
+        [id]: nextSet,
     };
 }
 
@@ -28,7 +28,7 @@ function profileListToSet(state, action) {
 
         return {
             ...state,
-            [id]: nextSet
+            [id]: nextSet,
         };
     }
 
@@ -45,7 +45,7 @@ function removeProfileListFromSet(state, action) {
 
         return {
             ...state,
-            [id]: nextSet
+            [id]: nextSet,
         };
     }
 
@@ -53,22 +53,22 @@ function removeProfileListFromSet(state, action) {
 }
 
 function addProfileToSet(state, action) {
-    const id = action.id;
+    const {id, user_id: userId} = action.data;
     const nextSet = new Set(state[id]);
-    nextSet.add(action.data.user_id);
+    nextSet.add(userId);
     return {
         ...state,
-        [id]: nextSet
+        [id]: nextSet,
     };
 }
 
 function removeProfileFromSet(state, action) {
-    const id = action.id;
+    const {id, user_id: userId} = action.data;
     const nextSet = new Set(state[id]);
-    nextSet.delete(action.data.user_id);
+    nextSet.delete(userId);
     return {
         ...state,
-        [id]: nextSet
+        [id]: nextSet,
     };
 }
 
@@ -82,7 +82,6 @@ function currentUserId(state = '', action) {
 
     case UserTypes.LOGOUT_SUCCESS:
         return '';
-
     }
 
     return state;
@@ -143,7 +142,7 @@ function profiles(state = {}, action) {
         const data = action.data || action.payload;
         return {
             ...state,
-            [data.id]: {...data}
+            [data.id]: {...data},
         };
     }
     case UserTypes.RECEIVED_PROFILES_LIST:
@@ -220,7 +219,7 @@ function profilesWithoutTeam(state = new Set(), action) {
     }
     case UserTypes.RECEIVED_PROFILE_IN_TEAM: {
         const nextSet = new Set(state);
-        nextSet.delete(action.id);
+        nextSet.delete(action.data.id);
         return nextSet;
     }
     case UserTypes.LOGOUT_SUCCESS:
@@ -384,5 +383,5 @@ export default combineReducers({
     profilesNotInChannel,
 
     // object where every key is the user id and has a value with the current status of each user
-    statuses
+    statuses,
 });

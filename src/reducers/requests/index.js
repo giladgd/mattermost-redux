@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {combineReducers} from 'redux';
 
@@ -15,6 +15,8 @@ import emojis from './emojis';
 import admin from './admin';
 import jobs from './jobs';
 import search from './search';
+import roles from './roles';
+import schemes from './schemes';
 
 export default combineReducers({
     channels,
@@ -28,5 +30,7 @@ export default combineReducers({
     emojis,
     admin,
     jobs,
-    search
+    search,
+    roles,
+    schemes,
 });

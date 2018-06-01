@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {batchActions} from 'redux-batched-actions';
 
@@ -7,13 +7,49 @@ import {Client4} from 'client';
 import {General, Preferences, Posts} from 'constants';
 import {PostTypes, FileTypes} from 'action_types';
 import {getUsersByUsername} from 'selectors/entities/users';
+import {getCustomEmojisByName as selectCustomEmojisByName} from 'selectors/entities/emojis';
 
 import * as Selectors from 'selectors/entities/posts';
+import {getConfig} from 'selectors/entities/general';
+
+import {parseNeededCustomEmojisFromText} from 'utils/emoji_utils';
 
 import {bindClientFunc, forceLogoutIfNecessary} from './helpers';
 import {logError} from './errors';
 import {deletePreferences, savePreferences} from './preferences';
 import {getProfilesByIds, getProfilesByUsernames, getStatusesByIds} from './users';
+import {systemEmojis, getCustomEmojiByName, getCustomEmojisByName} from './emojis';
+
+export function getPost(postId) {
+    return async (dispatch, getState) => {
+        dispatch({type: PostTypes.GET_POSTS_REQUEST}, getState);
+        let post;
+
+        try {
+            post = await Client4.getPost(postId);
+            getProfilesAndStatusesForPosts([post], dispatch, getState);
+        } catch (error) {
+            forceLogoutIfNecessary(error, dispatch, getState);
+            dispatch(batchActions([
+                {type: PostTypes.GET_POSTS_FAILURE, error},
+                logError(error)(dispatch),
+            ]), getState);
+            return {error};
+        }
+
+        dispatch(batchActions([
+            {
+                type: PostTypes.RECEIVED_POST,
+                data: post,
+            },
+            {
+                type: PostTypes.GET_POSTS_SUCCESS,
+            },
+        ]), getState);
+
+        return {data: post};
+    };
+}
 
 export function createPost(post, files = []) {
     return async (dispatch, getState) => {
@@ -23,11 +59,15 @@ export function createPost(post, files = []) {
         const timestamp = Date.now();
         const pendingPostId = post.pending_post_id || `${currentUserId}:${timestamp}`;
 
+        if (Selectors.isPostIdSending(state, pendingPostId)) {
+            return {data: true};
+        }
+
         let newPost = {
             ...post,
             pending_post_id: pendingPostId,
             create_at: timestamp,
-            update_at: timestamp
+            update_at: timestamp,
         };
 
         // We are retrying a pending post that had files
@@ -40,13 +80,13 @@ export function createPost(post, files = []) {
 
             newPost = {
                 ...newPost,
-                file_ids: fileIds
+                file_ids: fileIds,
             };
 
             dispatch({
                 type: FileTypes.RECEIVED_FILES_FOR_POST,
                 postId: pendingPostId,
-                data: files
+                data: files,
             });
         }
 
@@ -54,37 +94,37 @@ export function createPost(post, files = []) {
             type: PostTypes.RECEIVED_NEW_POST,
             data: {
                 id: pendingPostId,
-                ...newPost
+                ...newPost,
             },
             meta: {
                 offline: {
                     effect: () => Client4.createPost({...newPost, create_at: 0}),
                     commit: (success, payload) => {
-                        // Use RECEIVED_POSTS to clear pending posts
+                        // Use RECEIVED_POSTS to clear pending and sending posts
                         const actions = [{
                             type: PostTypes.RECEIVED_POSTS,
                             data: {
                                 order: [],
                                 posts: {
-                                    [payload.id]: payload
-                                }
+                                    [payload.id]: payload,
+                                },
                             },
-                            channelId: payload.channel_id
+                            channelId: payload.channel_id,
                         }];
 
                         if (files) {
                             actions.push({
                                 type: FileTypes.RECEIVED_FILES_FOR_POST,
                                 postId: payload.id,
-                                data: files
+                                data: files,
                             });
                         }
 
                         actions.push({
-                            type: PostTypes.CREATE_POST_SUCCESS
+                            type: PostTypes.CREATE_POST_SUCCESS,
                         });
 
-                        dispatch(batchActions(actions), getState);
+                        dispatch(batchActions(actions));
                     },
                     maxRetry: 0,
                     offlineRollback: true,
@@ -92,11 +132,11 @@ export function createPost(post, files = []) {
                         const data = {
                             ...newPost,
                             id: pendingPostId,
-                            failed: true
+                            failed: true,
                         };
 
                         const actions = [
-                            {type: PostTypes.CREATE_POST_FAILURE, error}
+                            {type: PostTypes.CREATE_POST_FAILURE, error},
                         ];
 
                         // If the failure was because: the root post was deleted or
@@ -104,42 +144,140 @@ export function createPost(post, files = []) {
                         if (error.server_error_id === 'api.post.create_post.root_id.app_error' ||
                             error.server_error_id === 'api.post.create_post.town_square_read_only'
                         ) {
-                            removePost(data)(dispatch, getState);
+                            dispatch(removePost(data));
                         } else {
                             actions.push({
                                 type: PostTypes.RECEIVED_POST,
-                                data
+                                data,
                             });
                         }
 
                         dispatch(batchActions(actions));
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
 
         return {data: true};
     };
 }
 
-export function deletePost(post) {
-    return async (dispatch) => {
-        const delPost = {...post};
+export function createPostImmediately(post, files = []) {
+    return async (dispatch, getState) => {
+        const state = getState();
+        const currentUserId = state.entities.users.currentUserId;
+
+        const timestamp = Date.now();
+        const pendingPostId = `${currentUserId}:${timestamp}`;
+
+        let newPost = {
+            ...post,
+            pending_post_id: pendingPostId,
+            create_at: timestamp,
+            update_at: timestamp,
+        };
+
+        if (files.length) {
+            const fileIds = files.map((file) => file.id);
+
+            newPost = {
+                ...newPost,
+                file_ids: fileIds,
+            };
+
+            dispatch({
+                type: FileTypes.RECEIVED_FILES_FOR_POST,
+                postId: pendingPostId,
+                data: files,
+            });
+        }
 
         dispatch({
-            type: PostTypes.POST_DELETED,
-            data: delPost,
-            meta: {
-                offline: {
-                    effect: () => Client4.deletePost(post.id),
-                    commit: {type: PostTypes.POST_DELETED},
-                    rollback: {
-                        type: PostTypes.RECEIVED_POST,
-                        data: delPost
-                    }
-                }
-            }
+            type: PostTypes.RECEIVED_NEW_POST,
+            data: {
+                id: pendingPostId,
+                ...newPost,
+            },
         });
+
+        try {
+            const created = await Client4.createPost({...newPost, create_at: 0});
+            newPost.id = created.id;
+        } catch (error) {
+            forceLogoutIfNecessary(error, dispatch, getState);
+            dispatch(batchActions([
+                {type: PostTypes.CREATE_POST_FAILURE, error},
+                {type: PostTypes.REMOVE_PENDING_POST, data: {id: pendingPostId, channel_id: newPost.channel_id}},
+                logError(error)(dispatch),
+            ]), getState);
+            return {error};
+        }
+
+        const actions = [{
+            type: PostTypes.RECEIVED_POSTS,
+            data: {
+                order: [],
+                posts: {
+                    [newPost.id]: newPost,
+                },
+            },
+            channelId: newPost.channel_id,
+        }];
+
+        if (files) {
+            actions.push({
+                type: FileTypes.RECEIVED_FILES_FOR_POST,
+                postId: newPost.id,
+                data: files,
+            });
+        }
+
+        actions.push({
+            type: PostTypes.CREATE_POST_SUCCESS,
+        });
+
+        dispatch(batchActions(actions), getState);
+
+        return {data: newPost};
+    };
+}
+
+export function resetCreatePostRequest() {
+    return {type: PostTypes.CREATE_POST_RESET_REQUEST};
+}
+
+export function deletePost(post) {
+    return async (dispatch, getState) => {
+        const state = getState();
+        const delPost = {...post};
+        if (delPost.type === Posts.POST_TYPES.COMBINED_USER_ACTIVITY) {
+            delPost.system_post_ids.forEach((systemPostId) => {
+                const systemPost = Selectors.getPost(state, systemPostId);
+                if (systemPost) {
+                    dispatch(deletePost(systemPost));
+                }
+            });
+
+            dispatch({
+                type: PostTypes.POST_DELETED,
+                data: delPost,
+            });
+        } else {
+            dispatch({
+                type: PostTypes.POST_DELETED,
+                data: delPost,
+                meta: {
+                    offline: {
+                        effect: () => Client4.deletePost(post.id),
+                        commit: {type: PostTypes.POST_DELETED},
+                        rollback: {
+                            type: PostTypes.RECEIVED_POST,
+                            data: delPost,
+                        },
+                    },
+                },
+            });
+        }
 
         return {data: true};
     };
@@ -163,18 +301,18 @@ export function pinPost(postId) {
         try {
             posts = await Client4.pinPost(postId);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.EDIT_POST_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
         const actions = [
             {
-                type: PostTypes.EDIT_POST_SUCCESS
-            }
+                type: PostTypes.EDIT_POST_SUCCESS,
+            },
         ];
 
         const post = Selectors.getPost(getState(), postId);
@@ -182,7 +320,7 @@ export function pinPost(postId) {
             actions.push(
                 {
                     type: PostTypes.RECEIVED_POST,
-                    data: {...post, is_pinned: true}
+                    data: {...post, is_pinned: true},
                 }
             );
         }
@@ -201,18 +339,18 @@ export function unpinPost(postId) {
         try {
             posts = await Client4.unpinPost(postId);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.EDIT_POST_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
         const actions = [
             {
-                type: PostTypes.EDIT_POST_SUCCESS
-            }
+                type: PostTypes.EDIT_POST_SUCCESS,
+            },
         ];
 
         const post = Selectors.getPost(getState(), postId);
@@ -220,7 +358,7 @@ export function unpinPost(postId) {
             actions.push(
                 {
                     type: PostTypes.RECEIVED_POST,
-                    data: {...post, is_pinned: false}
+                    data: {...post, is_pinned: false},
                 }
             );
         }
@@ -241,22 +379,22 @@ export function addReaction(postId, emojiName) {
         try {
             reaction = await Client4.addReaction(currentUserId, postId, emojiName);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.REACTION_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
         dispatch(batchActions([
             {
-                type: PostTypes.REACTION_SUCCESS
+                type: PostTypes.REACTION_SUCCESS,
             },
             {
                 type: PostTypes.RECEIVED_REACTION,
-                data: reaction
-            }
+                data: reaction,
+            },
         ]));
 
         return {data: true};
@@ -272,25 +410,46 @@ export function removeReaction(postId, emojiName) {
         try {
             await Client4.removeReaction(currentUserId, postId, emojiName);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.REACTION_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
         dispatch(batchActions([
             {
-                type: PostTypes.REACTION_SUCCESS
+                type: PostTypes.REACTION_SUCCESS,
             },
             {
                 type: PostTypes.REACTION_DELETED,
-                data: {user_id: currentUserId, post_id: postId, emoji_name: emojiName}
-            }
+                data: {user_id: currentUserId, post_id: postId, emoji_name: emojiName},
+            },
         ]));
 
         return {data: true};
+    };
+}
+
+export function getCustomEmojiForReaction(name) {
+    return async (dispatch, getState) => {
+        const nonExistentEmoji = getState().entities.emojis.nonExistentEmoji;
+        const customEmojisByName = selectCustomEmojisByName(getState());
+
+        if (systemEmojis.has(name)) {
+            return {data: true};
+        }
+
+        if (nonExistentEmoji.has(name)) {
+            return {data: true};
+        }
+
+        if (customEmojisByName.has(name)) {
+            return {data: true};
+        }
+
+        return await dispatch(getCustomEmojiByName(name));
     };
 }
 
@@ -302,23 +461,52 @@ export function getReactionsForPost(postId) {
         try {
             reactions = await Client4.getReactionsForPost(postId);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.REACTION_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
+        if (reactions && reactions.length > 0) {
+            const nonExistentEmoji = getState().entities.emojis.nonExistentEmoji;
+            const customEmojisByName = selectCustomEmojisByName(getState());
+            const emojisToLoad = new Set();
+
+            reactions.forEach((r) => {
+                const name = r.emoji_name;
+
+                if (systemEmojis.has(name)) {
+                    // It's a system emoji, go the next match
+                    return;
+                }
+
+                if (nonExistentEmoji.has(name)) {
+                    // We've previously confirmed this is not a custom emoji
+                    return;
+                }
+
+                if (customEmojisByName.has(name)) {
+                    // We have the emoji, go to the next match
+                    return;
+                }
+
+                emojisToLoad.add(name);
+            });
+
+            dispatch(getCustomEmojisByName(Array.from(emojisToLoad)));
+        }
+
         dispatch(batchActions([
             {
-                type: PostTypes.REACTION_SUCCESS
+                type: PostTypes.REACTION_SUCCESS,
             },
             {
                 type: PostTypes.RECEIVED_REACTIONS,
                 data: reactions,
-                postId
-            }
+                postId,
+            },
         ]));
 
         return reactions;
@@ -332,7 +520,7 @@ export function flagPost(postId) {
             user_id: currentUserId,
             category: Preferences.CATEGORY_FLAGGED_POST,
             name: postId,
-            value: 'true'
+            value: 'true',
         };
 
         Client4.trackEvent('action', 'action_posts_flag');
@@ -350,10 +538,10 @@ export function getPostThread(postId, skipAddToChannel = true) {
             posts = await Client4.getPostThread(postId);
             getProfilesAndStatusesForPosts(posts.posts, dispatch, getState);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.GET_POST_THREAD_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -365,12 +553,12 @@ export function getPostThread(postId, skipAddToChannel = true) {
                 type: PostTypes.RECEIVED_POSTS,
                 data: posts,
                 channelId: post.channel_id,
-                skipAddToChannel
+                skipAddToChannel,
             },
             {
-                type: PostTypes.GET_POST_THREAD_SUCCESS
-            }
-        ]), getState);
+                type: PostTypes.GET_POST_THREAD_SUCCESS,
+            },
+        ], 'BATCH_GET_POST_THREAD'), getState);
 
         return {data: posts};
     };
@@ -379,7 +567,7 @@ export function getPostThread(postId, skipAddToChannel = true) {
 export function getPostThreadWithRetry(postId) {
     return async (dispatch, getState) => {
         dispatch({
-            type: PostTypes.GET_POST_THREAD_REQUEST
+            type: PostTypes.GET_POST_THREAD_REQUEST,
         });
 
         dispatch({
@@ -398,29 +586,29 @@ export function getPostThreadWithRetry(postId) {
                                 type: PostTypes.RECEIVED_POSTS,
                                 data: payload,
                                 channelId: post.channel_id,
-                                skipAddToChannel: true
+                                skipAddToChannel: true,
                             },
                             {
-                                type: PostTypes.GET_POST_THREAD_SUCCESS
-                            }
+                                type: PostTypes.GET_POST_THREAD_SUCCESS,
+                            },
                         ]), getState);
                     },
                     maxRetry: 2,
                     cancel: true,
                     onRetryScheduled: () => {
                         dispatch({
-                            type: PostTypes.GET_POST_THREAD_WITH_RETRY_ATTEMPT
+                            type: PostTypes.GET_POST_THREAD_WITH_RETRY_ATTEMPT,
                         });
                     },
                     rollback: (success, error) => {
-                        forceLogoutIfNecessary(error, dispatch);
+                        forceLogoutIfNecessary(error, dispatch, getState);
                         dispatch(batchActions([
                             {type: PostTypes.GET_POST_THREAD_FAILURE, error},
-                            logError(error)(dispatch)
+                            logError(error)(dispatch),
                         ]), getState);
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
 
         return {data: true};
@@ -436,10 +624,10 @@ export function getPosts(channelId, page = 0, perPage = Posts.POST_CHUNK_SIZE) {
             posts = await Client4.getPosts(channelId, page, perPage);
             getProfilesAndStatusesForPosts(posts.posts, dispatch, getState);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.GET_POSTS_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -448,11 +636,11 @@ export function getPosts(channelId, page = 0, perPage = Posts.POST_CHUNK_SIZE) {
             {
                 type: PostTypes.RECEIVED_POSTS,
                 data: posts,
-                channelId
+                channelId,
             },
             {
-                type: PostTypes.GET_POSTS_SUCCESS
-            }
+                type: PostTypes.GET_POSTS_SUCCESS,
+            },
         ]), getState);
 
         return {data: posts};
@@ -462,7 +650,7 @@ export function getPosts(channelId, page = 0, perPage = Posts.POST_CHUNK_SIZE) {
 export function getPostsWithRetry(channelId, page = 0, perPage = Posts.POST_CHUNK_SIZE) {
     return async (dispatch, getState) => {
         dispatch({
-            type: PostTypes.GET_POSTS_REQUEST
+            type: PostTypes.GET_POSTS_REQUEST,
         });
 
         dispatch({
@@ -479,29 +667,29 @@ export function getPostsWithRetry(channelId, page = 0, perPage = Posts.POST_CHUN
                             {
                                 type: PostTypes.RECEIVED_POSTS,
                                 data: payload,
-                                channelId
+                                channelId,
                             },
                             {
-                                type: PostTypes.GET_POSTS_SUCCESS
-                            }
+                                type: PostTypes.GET_POSTS_SUCCESS,
+                            },
                         ]), getState);
                     },
                     maxRetry: 2,
                     cancel: true,
                     onRetryScheduled: () => {
                         dispatch({
-                            type: PostTypes.GET_POSTS_WITH_RETRY_ATTEMPT
+                            type: PostTypes.GET_POSTS_WITH_RETRY_ATTEMPT,
                         });
                     },
                     rollback: (success, error) => {
-                        forceLogoutIfNecessary(error, dispatch);
+                        forceLogoutIfNecessary(error, dispatch, getState);
                         dispatch(batchActions([
                             {type: PostTypes.GET_POSTS_FAILURE, error},
-                            logError(error)(dispatch)
+                            logError(error)(dispatch),
                         ]), getState);
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
 
         return {data: true};
@@ -517,10 +705,10 @@ export function getPostsSince(channelId, since) {
             posts = await Client4.getPostsSince(channelId, since);
             getProfilesAndStatusesForPosts(posts.posts, dispatch, getState);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.GET_POSTS_SINCE_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -529,11 +717,11 @@ export function getPostsSince(channelId, since) {
             {
                 type: PostTypes.RECEIVED_POSTS,
                 data: posts,
-                channelId
+                channelId,
             },
             {
-                type: PostTypes.GET_POSTS_SINCE_SUCCESS
-            }
+                type: PostTypes.GET_POSTS_SINCE_SUCCESS,
+            },
         ]), getState);
 
         return {data: posts};
@@ -558,29 +746,29 @@ export function getPostsSinceWithRetry(channelId, since) {
                             {
                                 type: PostTypes.RECEIVED_POSTS,
                                 data: payload,
-                                channelId
+                                channelId,
                             },
                             {
-                                type: PostTypes.GET_POSTS_SINCE_SUCCESS
-                            }
+                                type: PostTypes.GET_POSTS_SINCE_SUCCESS,
+                            },
                         ]), getState);
                     },
                     maxRetry: 2,
                     cancel: true,
                     onRetryScheduled: () => {
                         dispatch({
-                            type: PostTypes.GET_POSTS_SINCE_WITH_RETRY_ATTEMPT
+                            type: PostTypes.GET_POSTS_SINCE_WITH_RETRY_ATTEMPT,
                         });
                     },
                     rollback: (success, error) => {
-                        forceLogoutIfNecessary(error, dispatch);
+                        forceLogoutIfNecessary(error, dispatch, getState);
                         dispatch(batchActions([
                             {type: PostTypes.GET_POSTS_SINCE_FAILURE, error},
-                            logError(error)(dispatch)
+                            logError(error)(dispatch),
                         ]), getState);
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
 
         return {data: true};
@@ -596,10 +784,10 @@ export function getPostsBefore(channelId, postId, page = 0, perPage = Posts.POST
             posts = await Client4.getPostsBefore(channelId, postId, page, perPage);
             getProfilesAndStatusesForPosts(posts.posts, dispatch, getState);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.GET_POSTS_BEFORE_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -608,11 +796,11 @@ export function getPostsBefore(channelId, postId, page = 0, perPage = Posts.POST
             {
                 type: PostTypes.RECEIVED_POSTS,
                 data: posts,
-                channelId
+                channelId,
             },
             {
-                type: PostTypes.GET_POSTS_BEFORE_SUCCESS
-            }
+                type: PostTypes.GET_POSTS_BEFORE_SUCCESS,
+            },
         ]), getState);
 
         return {data: posts};
@@ -622,7 +810,7 @@ export function getPostsBefore(channelId, postId, page = 0, perPage = Posts.POST
 export function getPostsBeforeWithRetry(channelId, postId, page = 0, perPage = Posts.POST_CHUNK_SIZE) {
     return async (dispatch, getState) => {
         dispatch({
-            type: PostTypes.GET_POSTS_BEFORE_REQUEST
+            type: PostTypes.GET_POSTS_BEFORE_REQUEST,
         });
 
         dispatch({
@@ -639,29 +827,29 @@ export function getPostsBeforeWithRetry(channelId, postId, page = 0, perPage = P
                             {
                                 type: PostTypes.RECEIVED_POSTS,
                                 data: payload,
-                                channelId
+                                channelId,
                             },
                             {
-                                type: PostTypes.GET_POSTS_BEFORE_SUCCESS
-                            }
+                                type: PostTypes.GET_POSTS_BEFORE_SUCCESS,
+                            },
                         ]), getState);
                     },
                     maxRetry: 2,
                     cancel: true,
                     onRetryScheduled: () => {
                         dispatch({
-                            type: PostTypes.GET_POSTS_BEFORE_WITH_RETRY_ATTEMPT
+                            type: PostTypes.GET_POSTS_BEFORE_WITH_RETRY_ATTEMPT,
                         });
                     },
                     rollback: (success, error) => {
-                        forceLogoutIfNecessary(error, dispatch);
+                        forceLogoutIfNecessary(error, dispatch, getState);
                         dispatch(batchActions([
                             {type: PostTypes.GET_POSTS_BEFORE_FAILURE, error},
-                            logError(error)(dispatch)
+                            logError(error)(dispatch),
                         ]), getState);
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
 
         return {data: true};
@@ -677,10 +865,10 @@ export function getPostsAfter(channelId, postId, page = 0, perPage = Posts.POST_
             posts = await Client4.getPostsAfter(channelId, postId, page, perPage);
             getProfilesAndStatusesForPosts(posts.posts, dispatch, getState);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.GET_POSTS_AFTER_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
@@ -689,11 +877,11 @@ export function getPostsAfter(channelId, postId, page = 0, perPage = Posts.POST_
             {
                 type: PostTypes.RECEIVED_POSTS,
                 data: posts,
-                channelId
+                channelId,
             },
             {
-                type: PostTypes.GET_POSTS_AFTER_SUCCESS
-            }
+                type: PostTypes.GET_POSTS_AFTER_SUCCESS,
+            },
         ]), getState);
 
         return {data: posts};
@@ -703,7 +891,7 @@ export function getPostsAfter(channelId, postId, page = 0, perPage = Posts.POST_
 export function getPostsAfterWithRetry(channelId, postId, page = 0, perPage = Posts.POST_CHUNK_SIZE) {
     return async (dispatch, getState) => {
         dispatch({
-            type: PostTypes.GET_POSTS_AFTER_REQUEST
+            type: PostTypes.GET_POSTS_AFTER_REQUEST,
         });
 
         dispatch({
@@ -720,29 +908,29 @@ export function getPostsAfterWithRetry(channelId, postId, page = 0, perPage = Po
                             {
                                 type: PostTypes.RECEIVED_POSTS,
                                 data: payload,
-                                channelId
+                                channelId,
                             },
                             {
-                                type: PostTypes.GET_POSTS_AFTER_SUCCESS
-                            }
+                                type: PostTypes.GET_POSTS_AFTER_SUCCESS,
+                            },
                         ]), getState);
                     },
                     maxRetry: 2,
                     cancel: true,
                     onRetryScheduled: () => {
                         dispatch({
-                            type: PostTypes.GET_POSTS_AFTER_WITH_RETRY_ATTEMPT
+                            type: PostTypes.GET_POSTS_AFTER_WITH_RETRY_ATTEMPT,
                         });
                     },
                     rollback: (success, error) => {
-                        forceLogoutIfNecessary(error, dispatch);
+                        forceLogoutIfNecessary(error, dispatch, getState);
                         dispatch(batchActions([
                             {type: PostTypes.GET_POSTS_AFTER_FAILURE, error},
-                            logError(error)(dispatch)
+                            logError(error)(dispatch),
                         ]), getState);
-                    }
-                }
-            }
+                    },
+                },
+            },
         });
 
         return {data: true};
@@ -790,8 +978,17 @@ export async function getProfilesAndStatusesForPosts(posts, dispatch, getState) 
     // Do this after firing the other requests as it's more expensive
     const usernamesToLoad = getNeededAtMentionedUsernames(state, posts);
 
+    let emojisToLoad;
+    if (getConfig(state).EnableCustomEmoji === 'true') {
+        emojisToLoad = getNeededCustomEmojis(state, posts);
+    }
+
     if (usernamesToLoad.size > 0) {
         promises.push(getProfilesByUsernames(Array.from(usernamesToLoad))(dispatch, getState));
+    }
+
+    if (emojisToLoad && emojisToLoad.size > 0) {
+        promises.push(getCustomEmojisByName(Array.from(emojisToLoad))(dispatch, getState));
     }
 
     return Promise.all(promises);
@@ -835,11 +1032,73 @@ export function getNeededAtMentionedUsernames(state, posts) {
     return usernamesToLoad;
 }
 
+function buildPostAttachmentText(attachments) {
+    let attachmentText = '';
+
+    attachments.forEach((a) => {
+        if (a.fields && a.fields.length) {
+            a.fields.forEach((f) => {
+                attachmentText += ' ' + (f.value || '');
+            });
+        }
+
+        if (a.pretext) {
+            attachmentText += ' ' + a.pretext;
+        }
+
+        if (a.text) {
+            attachmentText += ' ' + a.text;
+        }
+    });
+
+    return attachmentText;
+}
+
+export function getNeededCustomEmojis(state, posts) {
+    let customEmojisByName; // Populate this lazily since it's relatively expensive
+    const nonExistentEmoji = state.entities.emojis.nonExistentEmoji;
+
+    let customEmojisToLoad = new Set();
+
+    Object.values(posts).forEach((post) => {
+        if (post.message.includes(':')) {
+            if (!customEmojisByName) {
+                customEmojisByName = selectCustomEmojisByName(state);
+            }
+
+            const emojisFromPost = parseNeededCustomEmojisFromText(post.message, systemEmojis, customEmojisByName, nonExistentEmoji);
+
+            if (emojisFromPost.size > 0) {
+                customEmojisToLoad = new Set([...customEmojisToLoad, ...emojisFromPost]);
+            }
+        }
+
+        const props = post.props;
+        if (props && props.attachments && props.attachments.length) {
+            if (!customEmojisByName) {
+                customEmojisByName = selectCustomEmojisByName(state);
+            }
+
+            const attachmentText = buildPostAttachmentText(props.attachments);
+
+            if (attachmentText) {
+                const emojisFromAttachment = parseNeededCustomEmojisFromText(attachmentText, systemEmojis, customEmojisByName, nonExistentEmoji);
+
+                if (emojisFromAttachment.size > 0) {
+                    customEmojisToLoad = new Set([...customEmojisToLoad, ...emojisFromAttachment]);
+                }
+            }
+        }
+    });
+
+    return customEmojisToLoad;
+}
+
 export function removePost(post) {
     return async (dispatch, getState) => {
         dispatch({
             type: PostTypes.REMOVE_POST,
-            data: {...post}
+            data: {...post},
         }, getState);
 
         return {data: true};
@@ -850,10 +1109,17 @@ export function selectPost(postId) {
     return async (dispatch, getState) => {
         dispatch({
             type: PostTypes.RECEIVED_POST_SELECTED,
-            data: postId
+            data: postId,
         }, getState);
 
         return {data: true};
+    };
+}
+
+export function selectFocusedPostId(postId) {
+    return {
+        type: PostTypes.RECEIVED_FOCUSED_POST,
+        data: postId,
     };
 }
 
@@ -863,7 +1129,7 @@ export function unflagPost(postId) {
         const preference = {
             user_id: currentUserId,
             category: Preferences.CATEGORY_FLAGGED_POST,
-            name: postId
+            name: postId,
         };
 
         Client4.trackEvent('action', 'action_posts_unflag');
@@ -880,23 +1146,23 @@ export function getOpenGraphMetadata(url) {
         try {
             data = await Client4.getOpenGraphMetadata(url);
         } catch (error) {
-            forceLogoutIfNecessary(error, dispatch);
+            forceLogoutIfNecessary(error, dispatch, getState);
             dispatch(batchActions([
                 {type: PostTypes.OPEN_GRAPH_FAILURE, error},
-                logError(error)(dispatch)
+                logError(error)(dispatch),
             ]), getState);
             return {error};
         }
 
         const actions = [{
-            type: PostTypes.OPEN_GRAPH_SUCCESS
+            type: PostTypes.OPEN_GRAPH_SUCCESS,
         }];
 
-        if (data.description) {
+        if (data.url) {
             actions.push({
                 type: PostTypes.RECEIVED_OPEN_GRAPH_METADATA,
                 data,
-                url
+                url,
             });
         }
 
@@ -921,7 +1187,7 @@ export function addMessageIntoHistory(message) {
     return async (dispatch, getState) => {
         dispatch({
             type: PostTypes.ADD_MESSAGE_INTO_HISTORY,
-            data: message
+            data: message,
         }, getState);
 
         return {data: true};
@@ -932,7 +1198,7 @@ export function resetHistoryIndex(index) {
     return async (dispatch, getState) => {
         dispatch({
             type: PostTypes.RESET_HISTORY_INDEX,
-            data: index
+            data: index,
         }, getState);
 
         return {data: true};
@@ -943,7 +1209,7 @@ export function moveHistoryIndexBack(index) {
     return async (dispatch, getState) => {
         dispatch({
             type: PostTypes.MOVE_HISTORY_INDEX_BACK,
-            data: index
+            data: index,
         }, getState);
 
         return {data: true};
@@ -954,7 +1220,7 @@ export function moveHistoryIndexForward(index) {
     return async (dispatch, getState) => {
         dispatch({
             type: PostTypes.MOVE_HISTORY_INDEX_FORWARD,
-            data: index
+            data: index,
         }, getState);
 
         return {data: true};
@@ -963,6 +1229,8 @@ export function moveHistoryIndexForward(index) {
 
 export default {
     createPost,
+    createPostImmediately,
+    resetCreatePostRequest,
     editPost,
     deletePost,
     removePost,
@@ -977,8 +1245,9 @@ export default {
     getPostsAfter,
     getPostsAfterWithRetry,
     selectPost,
+    selectFocusedPostId,
     addMessageIntoHistory,
     resetHistoryIndex,
     moveHistoryIndexBack,
-    moveHistoryIndexForward
+    moveHistoryIndexForward,
 };

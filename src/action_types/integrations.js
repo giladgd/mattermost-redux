@@ -1,5 +1,6 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
@@ -40,6 +41,14 @@ export default keyMirror({
     GET_CUSTOM_TEAM_COMMANDS_SUCCESS: null,
     GET_CUSTOM_TEAM_COMMANDS_FAILURE: null,
 
+    GET_AUTOCOMPLETE_COMMANDS_REQUEST: null,
+    GET_AUTOCOMPLETE_COMMANDS_SUCCESS: null,
+    GET_AUTOCOMPLETE_COMMANDS_FAILURE: null,
+
+    GET_COMMANDS_REQUEST: null,
+    GET_COMMANDS_SUCCESS: null,
+    GET_COMMANDS_FAILURE: null,
+
     ADD_COMMAND_REQUEST: null,
     ADD_COMMAND_SUCCESS: null,
     ADD_COMMAND_FAILURE: null,
@@ -76,6 +85,10 @@ export default keyMirror({
     UPDATE_OAUTH_APP_SUCCESS: null,
     UPDATE_OAUTH_APP_FAILURE: null,
 
+    EXECUTE_COMMAND_REQUEST: null,
+    EXECUTE_COMMAND_SUCCESS: null,
+    EXECUTE_COMMAND_FAILURE: null,
+
     RECEIVED_INCOMING_HOOK: null,
     RECEIVED_INCOMING_HOOKS: null,
     DELETED_INCOMING_HOOK: null,
@@ -84,9 +97,10 @@ export default keyMirror({
     DELETED_OUTGOING_HOOK: null,
     RECEIVED_CUSTOM_TEAM_COMMANDS: null,
     RECEIVED_COMMAND: null,
+    RECEIVED_COMMANDS: null,
     RECEIVED_COMMAND_TOKEN: null,
     DELETED_COMMAND: null,
     RECEIVED_OAUTH_APP: null,
     RECEIVED_OAUTH_APPS: null,
-    DELETED_OAUTH_APP: null
+    DELETED_OAUTH_APP: null,
 });

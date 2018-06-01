@@ -1,9 +1,14 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
 export default keyMirror({
+    GET_CUSTOM_EMOJI_REQUEST: null,
+    GET_CUSTOM_EMOJI_SUCCESS: null,
+    GET_CUSTOM_EMOJI_FAILURE: null,
+
     GET_CUSTOM_EMOJIS_REQUEST: null,
     GET_CUSTOM_EMOJIS_SUCCESS: null,
     GET_CUSTOM_EMOJIS_FAILURE: null,
@@ -23,5 +28,6 @@ export default keyMirror({
     CLEAR_CUSTOM_EMOJIS: null,
     RECEIVED_CUSTOM_EMOJI: null,
     RECEIVED_CUSTOM_EMOJIS: null,
-    DELETED_CUSTOM_EMOJI: null
+    DELETED_CUSTOM_EMOJI: null,
+    CUSTOM_EMOJI_DOES_NOT_EXIST: null,
 });

@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {combineReducers} from 'redux';
 import {GeneralTypes, UserTypes} from 'action_types';
@@ -8,6 +8,7 @@ function config(state = {}, action) {
     switch (action.type) {
     case GeneralTypes.CLIENT_CONFIG_RECEIVED:
         return Object.assign({}, state, action.data);
+    case GeneralTypes.CLIENT_CONFIG_RESET:
     case UserTypes.LOGOUT_SUCCESS:
         return {};
     default:
@@ -61,8 +62,20 @@ function license(state = {}, action) {
     switch (action.type) {
     case GeneralTypes.CLIENT_LICENSE_RECEIVED:
         return Object.assign({}, state, action.data);
+    case GeneralTypes.CLIENT_LICENSE_RESET:
     case UserTypes.LOGOUT_SUCCESS:
         return {};
+    default:
+        return state;
+    }
+}
+
+function timezones(state = [], action) {
+    switch (action.type) {
+    case GeneralTypes.SUPPORTED_TIMEZONES_RECEIVED:
+        return action.data;
+    case UserTypes.LOGOUT_SUCCESS:
+        return [];
     default:
         return state;
     }
@@ -86,5 +99,6 @@ export default combineReducers({
     dataRetentionPolicy,
     deviceToken,
     license,
-    serverVersion
+    serverVersion,
+    timezones,
 });

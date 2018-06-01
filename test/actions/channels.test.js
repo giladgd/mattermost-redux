@@ -1,5 +1,5 @@
-// Copyright (c) 2016 Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import assert from 'assert';
 import nock from 'nock';
@@ -196,7 +196,7 @@ describe('Actions.Channels', () => {
         const channel = {
             ...TestHelper.basicChannel,
             purpose: 'This is to test redux',
-            header: 'MM with Redux'
+            header: 'MM with Redux',
         };
 
         nock(Client4.getChannelsRoute()).
@@ -219,7 +219,7 @@ describe('Actions.Channels', () => {
 
     it('patchChannel', async () => {
         const channel = {
-            header: 'MM with Redux2'
+            header: 'MM with Redux2',
         };
 
         nock(Client4.getChannelsRoute()).
@@ -240,12 +240,50 @@ describe('Actions.Channels', () => {
         assert.strictEqual(channels[channelId].header, 'MM with Redux2');
     });
 
+    it('convertChannelToPrivate', async () => {
+        const publicChannel = TestHelper.basicChannel;
+        nock(Client4.getChannelRoute(publicChannel.id)).
+            post('/convert').
+            reply(200, {...TestHelper.basicChannel, type: General.PRIVATE_CHANNEL});
+
+        assert.equal(TestHelper.basicChannel.type, General.OPEN_CHANNEL);
+
+        await Actions.convertChannelToPrivate(TestHelper.basicChannel.id)(store.dispatch, store.getState);
+
+        const updateRequest = store.getState().requests.channels.updateChannel;
+        if (updateRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(updateRequest.error));
+        }
+
+        const {channels} = store.getState().entities.channels;
+        const channelId = Object.keys(channels)[0];
+        assert.ok(channelId);
+        assert.ok(channels[channelId]);
+        assert.equal(channels[channelId].type, General.PRIVATE_CHANNEL);
+    });
+
     it('getChannel', async () => {
         nock(Client4.getChannelsRoute()).
             get(`/${TestHelper.basicChannel.id}`).
             reply(200, TestHelper.basicChannel);
 
         await Actions.getChannel(TestHelper.basicChannel.id)(store.dispatch, store.getState);
+
+        const channelRequest = store.getState().requests.channels.getChannel;
+        if (channelRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(channelRequest.error));
+        }
+
+        const {channels} = store.getState().entities.channels;
+        assert.ok(channels[TestHelper.basicChannel.id]);
+    });
+
+    it('getChannelByNameAndTeamName', async () => {
+        nock(Client4.getTeamsRoute()).
+            get(`/name/${TestHelper.basicTeam.name}/channels/name/${TestHelper.basicChannel.name}`).
+            reply(200, TestHelper.basicChannel);
+
+        await Actions.getChannelByNameAndTeamName(TestHelper.basicTeam.name, TestHelper.basicChannel.name)(store.dispatch, store.getState);
 
         const channelRequest = store.getState().requests.channels.getChannel;
         if (channelRequest.status === RequestStatus.FAILURE) {
@@ -302,7 +340,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getUsersRoute()).
             get(`/me/teams/${TestHelper.basicTeam.id}/channels/members`).
-            reply(200, [{user_id: TestHelper.basicUser.id, channel_id: directChannel.id}, TestHelper.basicChannelMember]);
+            reply(200, [{user_id: TestHelper.basicUser.id, roles: 'channel_user', channel_id: directChannel.id}, TestHelper.basicChannelMember]);
 
         await Actions.fetchMyChannelsAndMembers(TestHelper.basicTeam.id)(store.dispatch, store.getState);
 
@@ -326,7 +364,7 @@ describe('Actions.Channels', () => {
     it('updateChannelNotifyProps', async () => {
         const notifyProps = {
             mark_unread: 'mention',
-            desktop: 'none'
+            desktop: 'none',
         };
 
         nock(Client4.getUsersRoute()).
@@ -388,7 +426,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getChannelsRoute()).
             post(`/${secondChannel.id}/members`).
-            reply(201, {user_id: TestHelper.basicUser.id, channel_id: secondChannel.id});
+            reply(201, {user_id: TestHelper.basicUser.id, roles: 'channel_user', channel_id: secondChannel.id});
 
         await Actions.joinChannel(
             TestHelper.basicUser.id,
@@ -402,7 +440,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getUsersRoute()).
             get(`/me/teams/${TestHelper.basicTeam.id}/channels/members`).
-            reply(200, [{user_id: TestHelper.basicUser.id, channel_id: secondChannel.id}, TestHelper.basicChannelMember]);
+            reply(200, [{user_id: TestHelper.basicUser.id, roles: 'channel_user', channel_id: secondChannel.id}, TestHelper.basicChannelMember]);
 
         await Actions.fetchMyChannelsAndMembers(TestHelper.basicTeam.id)(store.dispatch, store.getState);
 
@@ -417,7 +455,7 @@ describe('Actions.Channels', () => {
                 channel_id: secondChannel.id,
                 team_id: TestHelper.basicTeam.id,
                 display_name: 'TestIncomingHook',
-                description: 'Some description.'
+                description: 'Some description.',
             });
         const incomingHook = await createIncomingHook({channel_id: secondChannel.id, display_name: 'test', description: 'test'})(store.dispatch, store.getState);
 
@@ -437,7 +475,7 @@ describe('Actions.Channels', () => {
                 callback_urls: ['http://notarealurl'],
                 display_name: 'TestOutgoingHook',
                 description: '',
-                content_type: 'application/x-www-form-urlencoded'
+                content_type: 'application/x-www-form-urlencoded',
             });
         const outgoingHook = await createOutgoingHook({channel_id: secondChannel.id, team_id: TestHelper.basicTeam.id, display_name: 'TestOutgoingHook', trigger_words: [TestHelper.generateId()], callback_urls: ['http://notarealurl']})(store.dispatch, store.getState);
 
@@ -477,7 +515,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getUsersRoute()).
             get(`/me/teams/${TestHelper.basicTeam.id}/channels/members`).
-            reply(200, [{user_id: TestHelper.basicUser.id, channel_id: userChannel.id}, TestHelper.basicChannelMember]);
+            reply(200, [{user_id: TestHelper.basicUser.id, roles: 'channel_user', channel_id: userChannel.id}, TestHelper.basicChannelMember]);
 
         await Actions.fetchMyChannelsAndMembers(TestHelper.basicTeam.id)(store.dispatch, store.getState);
 
@@ -517,7 +555,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getUsersRoute()).
             get(`/me/teams/${TestHelper.basicTeam.id}/channels/members`).
-            reply(200, [{user_id: TestHelper.basicUser.id, channel_id: userChannel.id}, TestHelper.basicChannelMember]);
+            reply(200, [{user_id: TestHelper.basicUser.id, roles: 'channel_user', channel_id: userChannel.id}, TestHelper.basicChannelMember]);
 
         await Actions.fetchMyChannelsAndMembers(TestHelper.basicTeam.id)(store.dispatch, store.getState);
 
@@ -528,6 +566,8 @@ describe('Actions.Channels', () => {
         assert.ok(member);
         assert.ok(otherMember);
 
+        await TestHelper.wait(50);
+
         await Actions.markChannelAsViewed(
             TestHelper.basicChannel.id
         )(store.dispatch, store.getState);
@@ -537,49 +577,150 @@ describe('Actions.Channels', () => {
         assert.ok(member.last_viewed_at > timestamp);
     });
 
-    it('markChannelAsUnread', async () => {
-        TestHelper.mockLogin();
-        await login(TestHelper.basicUser.email, TestHelper.basicUser.password)(store.dispatch, store.getState);
+    describe('markChannelAsUnread', async () => {
+        it('plain message', async () => {
+            const teamId = TestHelper.generateId();
+            const channelId = TestHelper.generateId();
+            const userId = TestHelper.generateId();
 
-        nock(Client4.getChannelsRoute()).
-            post('').
-            reply(201, TestHelper.fakeChannelWithId(TestHelper.basicTeam.id));
+            store = await configureStore({
+                entities: {
+                    channels: {
+                        channels: {
+                            [channelId]: {team_id: teamId, total_msg_count: 10},
+                        },
+                        myMembers: {
+                            [channelId]: {msg_count: 10, mention_count: 0},
+                        },
+                    },
+                    teams: {
+                        myMembers: {
+                            [teamId]: {msg_count: 0, mention_count: 0},
+                        },
+                    },
+                    users: {
+                        currentUserId: userId,
+                    },
+                },
+            });
 
-        const userChannel = await Client4.createChannel(
-            TestHelper.fakeChannel(TestHelper.basicTeam.id)
-        );
+            store.dispatch(Actions.markChannelAsUnread(teamId, channelId, [TestHelper.generateId()]), store.getState);
 
-        nock(Client4.getUsersRoute()).
-            get(`/me/teams/${TestHelper.basicTeam.id}/channels`).
-            reply(200, [userChannel, TestHelper.basicChannel]);
+            const state = store.getState();
+            assert.equal(state.entities.channels.channels[channelId].total_msg_count, 11);
+            assert.equal(state.entities.channels.myMembers[channelId].msg_count, 10);
+            assert.equal(state.entities.channels.myMembers[channelId].mention_count, 0);
+            assert.equal(state.entities.teams.myMembers[teamId].msg_count, 1);
+            assert.equal(state.entities.teams.myMembers[teamId].mention_count, 0);
+        });
 
-        nock(Client4.getUsersRoute()).
-            get(`/me/teams/${TestHelper.basicTeam.id}/channels/members`).
-            reply(200, [{user_id: TestHelper.basicUser.id, channel_id: userChannel.id, mention_count: 0, msg_count: 0}, TestHelper.basicChannelMember]);
+        it('message mentioning current user', async () => {
+            const teamId = TestHelper.generateId();
+            const channelId = TestHelper.generateId();
+            const userId = TestHelper.generateId();
 
-        await Actions.fetchMyChannelsAndMembers(TestHelper.basicTeam.id)(store.dispatch, store.getState);
+            store = await configureStore({
+                entities: {
+                    channels: {
+                        channels: {
+                            [channelId]: {team_id: teamId, total_msg_count: 10},
+                        },
+                        myMembers: {
+                            [channelId]: {msg_count: 10, mention_count: 0},
+                        },
+                    },
+                    teams: {
+                        myMembers: {
+                            [teamId]: {msg_count: 0, mention_count: 0},
+                        },
+                    },
+                    users: {
+                        currentUserId: userId,
+                    },
+                },
+            });
 
-        const {channels} = store.getState().entities.channels;
-        assert.ok(channels);
+            store.dispatch(Actions.markChannelAsUnread(teamId, channelId, [userId]), store.getState);
 
-        const channelId = userChannel.id;
-        await Actions.markChannelAsUnread(
-            TestHelper.basicTeam.id,
-            channelId,
-            JSON.stringify([TestHelper.basicUser.id])
-        )(store.dispatch, store.getState);
+            const state = store.getState();
+            assert.equal(state.entities.channels.channels[channelId].total_msg_count, 11);
+            assert.equal(state.entities.channels.myMembers[channelId].msg_count, 10);
+            assert.equal(state.entities.channels.myMembers[channelId].mention_count, 1);
+            assert.equal(state.entities.teams.myMembers[teamId].msg_count, 1);
+            assert.equal(state.entities.teams.myMembers[teamId].mention_count, 1);
+        });
 
-        const state = store.getState();
-        const {channels: myChannels, myMembers: channelMembers} = state.entities.channels;
-        const {myMembers: teamMembers} = state.entities.teams;
-        const channel = myChannels[channelId];
-        const channelMember = channelMembers[channelId];
-        const teamMember = teamMembers[TestHelper.basicTeam.id];
+        it('plain message with mark_unread="mention"', async () => {
+            const teamId = TestHelper.generateId();
+            const channelId = TestHelper.generateId();
+            const userId = TestHelper.generateId();
 
-        assert.equal((channel.total_msg_count - channelMember.msg_count), 1);
-        assert.equal(channelMember.mention_count, 1);
-        assert.equal(teamMember.msg_count, 1);
-        assert.equal(teamMember.mention_count, 1);
+            store = await configureStore({
+                entities: {
+                    channels: {
+                        channels: {
+                            [channelId]: {team_id: teamId, total_msg_count: 10},
+                        },
+                        myMembers: {
+                            [channelId]: {msg_count: 10, mention_count: 0, notify_props: {mark_unread: General.MENTION}},
+                        },
+                    },
+                    teams: {
+                        myMembers: {
+                            [teamId]: {msg_count: 0, mention_count: 0},
+                        },
+                    },
+                    users: {
+                        currentUserId: userId,
+                    },
+                },
+            });
+
+            store.dispatch(Actions.markChannelAsUnread(teamId, channelId, [TestHelper.generateId()]), store.getState);
+
+            const state = store.getState();
+            assert.equal(state.entities.channels.channels[channelId].total_msg_count, 11);
+            assert.equal(state.entities.channels.myMembers[channelId].msg_count, 11);
+            assert.equal(state.entities.channels.myMembers[channelId].mention_count, 0);
+            assert.equal(state.entities.teams.myMembers[teamId].msg_count, 0);
+            assert.equal(state.entities.teams.myMembers[teamId].mention_count, 0);
+        });
+
+        it('message mentioning current user with mark_unread="mention"', async () => {
+            const teamId = TestHelper.generateId();
+            const channelId = TestHelper.generateId();
+            const userId = TestHelper.generateId();
+
+            store = await configureStore({
+                entities: {
+                    channels: {
+                        channels: {
+                            [channelId]: {team_id: teamId, total_msg_count: 10},
+                        },
+                        myMembers: {
+                            [channelId]: {msg_count: 10, mention_count: 0, notify_props: {mark_unread: General.MENTION}},
+                        },
+                    },
+                    teams: {
+                        myMembers: {
+                            [teamId]: {msg_count: 0, mention_count: 0},
+                        },
+                    },
+                    users: {
+                        currentUserId: userId,
+                    },
+                },
+            });
+
+            store.dispatch(Actions.markChannelAsUnread(teamId, channelId, [userId]), store.getState);
+
+            const state = store.getState();
+            assert.equal(state.entities.channels.channels[channelId].total_msg_count, 11);
+            assert.equal(state.entities.channels.myMembers[channelId].msg_count, 11);
+            assert.equal(state.entities.channels.myMembers[channelId].mention_count, 1);
+            assert.equal(state.entities.teams.myMembers[teamId].msg_count, 0);
+            assert.equal(state.entities.teams.myMembers[teamId].mention_count, 1);
+        });
     });
 
     describe('markChannelAsRead', async () => {
@@ -594,27 +735,27 @@ describe('Actions.Channels', () => {
                             [channelId]: {
                                 id: channelId,
                                 team_id: teamId,
-                                total_msg_count: 10
-                            }
+                                total_msg_count: 10,
+                            },
                         },
                         myMembers: {
                             [channelId]: {
                                 channel_id: channelId,
                                 mention_count: 0,
-                                msg_count: 10
-                            }
-                        }
+                                msg_count: 10,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId]: {
                                 id: teamId,
                                 mention_count: 0,
-                                msg_count: 0
-                            }
-                        }
-                    }
-                }
+                                msg_count: 0,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId)(store.dispatch, store.getState);
@@ -639,27 +780,27 @@ describe('Actions.Channels', () => {
                             [channelId]: {
                                 id: channelId,
                                 team_id: teamId,
-                                total_msg_count: 10
-                            }
+                                total_msg_count: 10,
+                            },
                         },
                         myMembers: {
                             [channelId]: {
                                 channel_id: channelId,
                                 mention_count: 2,
-                                msg_count: 5
-                            }
-                        }
+                                msg_count: 5,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId]: {
                                 id: teamId,
                                 mention_count: 2,
-                                msg_count: 5
-                            }
-                        }
-                    }
-                }
+                                msg_count: 5,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId)(store.dispatch, store.getState);
@@ -683,22 +824,22 @@ describe('Actions.Channels', () => {
                             [channelId]: {
                                 id: channelId,
                                 team_id: '',
-                                total_msg_count: 10
-                            }
+                                total_msg_count: 10,
+                            },
                         },
                         myMembers: {
                             [channelId]: {
                                 channel_id: channelId,
                                 mention_count: 2,
-                                msg_count: 5
-                            }
-                        }
+                                msg_count: 5,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId)(store.dispatch, store.getState);
@@ -721,37 +862,37 @@ describe('Actions.Channels', () => {
                             [channelId1]: {
                                 id: channelId1,
                                 team_id: teamId,
-                                total_msg_count: 10
+                                total_msg_count: 10,
                             },
                             [channelId2]: {
                                 id: channelId2,
                                 team_id: teamId,
-                                total_msg_count: 12
-                            }
+                                total_msg_count: 12,
+                            },
                         },
                         myMembers: {
                             [channelId1]: {
                                 channel_id: channelId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [channelId2]: {
                                 channel_id: channelId2,
                                 mention_count: 4,
-                                msg_count: 9
-                            }
-                        }
+                                msg_count: 9,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId]: {
                                 id: teamId,
                                 mention_count: 6,
-                                msg_count: 8
-                            }
-                        }
-                    }
-                }
+                                msg_count: 8,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId1)(store.dispatch, store.getState);
@@ -780,37 +921,37 @@ describe('Actions.Channels', () => {
                             [channelId1]: {
                                 id: channelId1,
                                 team_id: teamId,
-                                total_msg_count: 10
+                                total_msg_count: 10,
                             },
                             [channelId2]: {
                                 id: channelId2,
                                 team_id: teamId,
-                                total_msg_count: 12
-                            }
+                                total_msg_count: 12,
+                            },
                         },
                         myMembers: {
                             [channelId1]: {
                                 channel_id: channelId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [channelId2]: {
                                 channel_id: channelId2,
                                 mention_count: 4,
-                                msg_count: 9
-                            }
-                        }
+                                msg_count: 9,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId]: {
                                 id: teamId,
                                 mention_count: 6,
-                                msg_count: 8
-                            }
-                        }
-                    }
-                }
+                                msg_count: 8,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId1, channelId2)(store.dispatch, store.getState);
@@ -839,37 +980,37 @@ describe('Actions.Channels', () => {
                             [channelId1]: {
                                 id: channelId1,
                                 team_id: teamId,
-                                total_msg_count: 10
+                                total_msg_count: 10,
                             },
                             [channelId2]: {
                                 id: channelId2,
                                 team_id: teamId,
-                                total_msg_count: 12
-                            }
+                                total_msg_count: 12,
+                            },
                         },
                         myMembers: {
                             [channelId1]: {
                                 channel_id: channelId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [channelId2]: {
                                 channel_id: channelId2,
                                 mention_count: 4,
-                                msg_count: 9
-                            }
-                        }
+                                msg_count: 9,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId]: {
                                 id: teamId,
                                 mention_count: 6,
-                                msg_count: 8
-                            }
-                        }
-                    }
-                }
+                                msg_count: 8,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId2, channelId1)(store.dispatch, store.getState);
@@ -899,42 +1040,42 @@ describe('Actions.Channels', () => {
                             [channelId1]: {
                                 id: channelId1,
                                 team_id: teamId1,
-                                total_msg_count: 10
+                                total_msg_count: 10,
                             },
                             [channelId2]: {
                                 id: channelId2,
                                 team_id: teamId2,
-                                total_msg_count: 12
-                            }
+                                total_msg_count: 12,
+                            },
                         },
                         myMembers: {
                             [channelId1]: {
                                 channel_id: channelId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [channelId2]: {
                                 channel_id: channelId2,
                                 mention_count: 4,
-                                msg_count: 9
-                            }
-                        }
+                                msg_count: 9,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId1]: {
                                 id: teamId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [teamId2]: {
                                 id: teamId2,
                                 mention_count: 4,
-                                msg_count: 3
-                            }
-                        }
-                    }
-                }
+                                msg_count: 3,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId1)(store.dispatch, store.getState);
@@ -967,42 +1108,42 @@ describe('Actions.Channels', () => {
                             [channelId1]: {
                                 id: channelId1,
                                 team_id: teamId1,
-                                total_msg_count: 10
+                                total_msg_count: 10,
                             },
                             [channelId2]: {
                                 id: channelId2,
                                 team_id: teamId2,
-                                total_msg_count: 12
-                            }
+                                total_msg_count: 12,
+                            },
                         },
                         myMembers: {
                             [channelId1]: {
                                 channel_id: channelId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [channelId2]: {
                                 channel_id: channelId2,
                                 mention_count: 4,
-                                msg_count: 9
-                            }
-                        }
+                                msg_count: 9,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId1]: {
                                 id: teamId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [teamId2]: {
                                 id: teamId2,
                                 mention_count: 4,
-                                msg_count: 3
-                            }
-                        }
-                    }
-                }
+                                msg_count: 3,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId1, channelId2)(store.dispatch, store.getState);
@@ -1035,42 +1176,42 @@ describe('Actions.Channels', () => {
                             [channelId1]: {
                                 id: channelId1,
                                 team_id: teamId1,
-                                total_msg_count: 10
+                                total_msg_count: 10,
                             },
                             [channelId2]: {
                                 id: channelId2,
                                 team_id: teamId2,
-                                total_msg_count: 12
-                            }
+                                total_msg_count: 12,
+                            },
                         },
                         myMembers: {
                             [channelId1]: {
                                 channel_id: channelId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [channelId2]: {
                                 channel_id: channelId2,
                                 mention_count: 4,
-                                msg_count: 9
-                            }
-                        }
+                                msg_count: 9,
+                            },
+                        },
                     },
                     teams: {
                         myMembers: {
                             [teamId1]: {
                                 id: teamId1,
                                 mention_count: 2,
-                                msg_count: 5
+                                msg_count: 5,
                             },
                             [teamId2]: {
                                 id: teamId2,
                                 mention_count: 4,
-                                msg_count: 3
-                            }
-                        }
-                    }
-                }
+                                msg_count: 3,
+                            },
+                        },
+                    },
+                },
             });
 
             await Actions.markChannelAsRead(channelId1, channelId2)(store.dispatch, store.getState);
@@ -1255,7 +1396,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getChannelsRoute()).
             post(`/${TestHelper.basicChannel.id}/members`).
-            reply(201, {channel_id: TestHelper.basicChannel.id, user_id: TestHelper.basicUser.id});
+            reply(201, {channel_id: TestHelper.basicChannel.id, roles: 'channel_user', user_id: TestHelper.basicUser.id});
 
         await Actions.joinChannel(
             TestHelper.basicUser.id,
@@ -1280,7 +1421,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getChannelsRoute()).
             post(`/${TestHelper.basicChannel.id}/members`).
-            reply(201, {channel_id: TestHelper.basicChannel.id, user_id: user.id});
+            reply(201, {channel_id: TestHelper.basicChannel.id, roles: 'channel_user', user_id: user.id});
 
         await Actions.addChannelMember(
             channelId,
@@ -1326,13 +1467,13 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getChannelsRoute()).
             post(`/${TestHelper.basicChannel.id}/members`).
-            reply(201, {channel_id: TestHelper.basicChannel.id, user_id: TestHelper.basicUser.id});
+            reply(201, {channel_id: TestHelper.basicChannel.id, roles: 'channel_user', user_id: TestHelper.basicUser.id});
 
         await Actions.joinChannel(
             TestHelper.basicUser.id,
             TestHelper.basicTeam.id,
             channelId
-            )(store.dispatch, store.getState);
+        )(store.dispatch, store.getState);
 
         nock(Client4.getChannelsRoute()).
             get(`/${TestHelper.basicChannel.id}/stats`).
@@ -1344,7 +1485,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getChannelsRoute()).
             post(`/${TestHelper.basicChannel.id}/members`).
-            reply(201, {channel_id: TestHelper.basicChannel.id, user_id: user.id});
+            reply(201, {channel_id: TestHelper.basicChannel.id, roles: 'channel_user', user_id: user.id});
 
         await Actions.addChannelMember(
             channelId,
@@ -1398,12 +1539,12 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getTeamsRoute()).
             post(`/${TestHelper.basicChannel.id}/members`).
-            reply(201, {team_id: TestHelper.basicTeam.id, user_id: user.id});
+            reply(201, {team_id: TestHelper.basicTeam.id, roles: 'channel_user', user_id: user.id});
 
         await addUserToTeam(TestHelper.basicTeam.id, user.id)(store.dispatch, store.getState);
         nock(Client4.getChannelsRoute()).
             post(`/${TestHelper.basicChannel.id}/members`).
-            reply(201, {channel_id: TestHelper.basicChannel.id, user_id: user.id});
+            reply(201, {channel_id: TestHelper.basicChannel.id, roles: 'channel_user', user_id: user.id});
 
         await Actions.addChannelMember(TestHelper.basicChannel.id, user.id)(store.dispatch, store.getState);
 
@@ -1490,7 +1631,7 @@ describe('Actions.Channels', () => {
 
             nock(Client4.getChannelsRoute()).
                 post(`/${TestHelper.basicChannel.id}/members`).
-                reply(201, {channel_id: TestHelper.basicChannel.id, user_id: TestHelper.basicUser.id});
+                reply(201, {channel_id: TestHelper.basicChannel.id, roles: 'channel_user', user_id: TestHelper.basicUser.id});
 
             await Actions.joinChannel(
                 TestHelper.basicUser.id,
@@ -1530,14 +1671,14 @@ describe('Actions.Channels', () => {
         test();
     });
 
-    it('leave private channel', async() => {
+    it('leave private channel', async () => {
         const newChannel = {
             team_id: TestHelper.basicTeam.id,
             name: 'redux-test-private',
             display_name: 'Redux Test',
             purpose: 'This is to test redux',
             header: 'MM with Redux',
-            type: 'P'
+            type: 'P',
         };
 
         nock(Client4.getChannelsRoute()).
@@ -1568,7 +1709,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getChannelsRoute()).
             post(`/${TestHelper.basicChannel.id}/members`).
-            reply(201, {channel_id: TestHelper.basicChannel.id, user_id: TestHelper.basicUser.id});
+            reply(201, {channel_id: TestHelper.basicChannel.id, roles: 'channel_user', user_id: TestHelper.basicUser.id});
 
         await Actions.joinChannel(
             TestHelper.basicUser.id,
@@ -1620,7 +1761,7 @@ describe('Actions.Channels', () => {
 
         nock(Client4.getChannelsRoute()).
             post(`/${secondChannel.id}/members`).
-            reply(201, {channel_id: secondChannel.id, user_id: TestHelper.basicUser.id});
+            reply(201, {channel_id: secondChannel.id, roles: 'channel_user', user_id: TestHelper.basicUser.id});
 
         await Actions.joinChannel(
             TestHelper.basicUser.id,
@@ -1675,5 +1816,58 @@ describe('Actions.Channels', () => {
         prefKey = getPreferenceKey(Preferences.CATEGORY_FAVORITE_CHANNEL, TestHelper.basicChannel.id);
         preference = state.entities.preferences.myPreferences[prefKey];
         assert.ok(!preference);
+    });
+
+    it('autocompleteChannels', async () => {
+        const prefix = TestHelper.basicChannel.name.slice(0, 5);
+
+        nock(Client4.getTeamRoute(TestHelper.basicChannel.team_id)).
+            get('/channels/autocomplete').
+            query({name: prefix}).
+            reply(200, [TestHelper.basicChannel]);
+
+        const result = await Actions.autocompleteChannels(
+            TestHelper.basicChannel.team_id,
+            prefix
+        )(store.dispatch, store.getState);
+
+        assert.deepEqual(result, {data: [TestHelper.basicChannel]});
+    });
+
+    it('updateChannelScheme', async () => {
+        TestHelper.mockLogin();
+        await login(TestHelper.basicChannelMember.email, 'password1')(store.dispatch, store.getState);
+
+        nock(Client4.getChannelsRoute()).
+            post('').
+            reply(201, TestHelper.fakeChannelWithId(TestHelper.basicTeam.id));
+
+        await Actions.createChannel(TestHelper.fakeChannel(TestHelper.basicTeam.id), TestHelper.basicUser.id)(store.dispatch, store.getState);
+
+        const createRequest = store.getState().requests.channels.createChannel;
+
+        if (createRequest.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(createRequest.error));
+        }
+
+        const {channels} = store.getState().entities.channels;
+        const schemeId = 'xxxxxxxxxxxxxxxxxxxxxxxxxx';
+        const {id} = channels[Object.keys(channels)[0]];
+
+        nock(Client4.getChannelsRoute()).
+            put('/' + id + '/scheme').
+            reply(200, OK_RESPONSE);
+
+        await Actions.updateChannelScheme(id, schemeId)(store.dispatch, store.getState);
+
+        const request = store.getState().requests.channels.updateChannelScheme;
+
+        if (request.status === RequestStatus.FAILURE) {
+            throw new Error(JSON.stringify(request.error));
+        }
+
+        const updated = store.getState().entities.channels.channels[id];
+        assert.ok(updated);
+        assert.equal(updated.scheme_id, schemeId);
     });
 });

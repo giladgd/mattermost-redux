@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 /* eslint-disable no-undefined */
 
 import {createStore, combineReducers} from 'redux';
@@ -12,16 +12,16 @@ import defaultOfflineConfig from 'redux-offline/lib/defaults';
 import createActionBuffer from 'redux-action-buffer';
 
 const devToolsEnhancer = (
-    typeof window !== 'undefined' && window.__REDUX_DEVTOOLS_EXTENSION__ ?  // eslint-disable-line no-underscore-dangle
-    window.__REDUX_DEVTOOLS_EXTENSION__ :  // eslint-disable-line no-underscore-dangle
-    () => {
-        return devTools({
-            name: 'Mattermost',
-            hostname: 'localhost',
-            port: 5678,
-            realtime: true
-        });
-    }
+    typeof window !== 'undefined' && window.__REDUX_DEVTOOLS_EXTENSION__ ? // eslint-disable-line no-underscore-dangle
+        window.__REDUX_DEVTOOLS_EXTENSION__ : // eslint-disable-line no-underscore-dangle
+        () => {
+            return devTools({
+                name: 'Mattermost',
+                hostname: 'localhost',
+                port: 5678,
+                realtime: true,
+            });
+        }
 );
 
 import {General} from 'constants';
@@ -62,7 +62,7 @@ export default function configureServiceStore(preloadedState, appReducer, userOf
         offlineCompose(baseOfflineConfig)(
             middleware,
             [
-                devToolsEnhancer()
+                devToolsEnhancer(),
             ]
         )
     );

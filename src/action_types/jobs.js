@@ -1,5 +1,6 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
@@ -22,5 +23,5 @@ export default keyMirror({
 
     RECEIVED_JOB: null,
     RECEIVED_JOBS: null,
-    RECEIVED_JOBS_BY_TYPE: null
+    RECEIVED_JOBS_BY_TYPE: null,
 });

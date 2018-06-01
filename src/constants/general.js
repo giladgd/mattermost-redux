@@ -1,11 +1,14 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 export default {
     CONFIG_CHANGED: 'config_changed',
+    SERVER_VERSION_CHANGED: 'server_version_changed',
 
     PAGE_SIZE_DEFAULT: 60,
     PAGE_SIZE_MAXIMUM: 200,
+    LOGS_PAGE_SIZE_DEFAULT: 10000,
     AUDITS_CHUNK_SIZE: 100,
     PROFILE_CHUNK_SIZE: 100,
     CHANNELS_CHUNK_SIZE: 50,
@@ -16,6 +19,7 @@ export default {
 
     MENTION: 'mention',
 
+    OUT_OF_OFFICE: 'ooo',
     OFFLINE: 'offline',
     AWAY: 'away',
     ONLINE: 'online',
@@ -62,15 +66,17 @@ export default {
     TEAMMATE_NAME_DISPLAY: {
         SHOW_USERNAME: 'username',
         SHOW_NICKNAME_FULLNAME: 'nickname_full_name',
-        SHOW_FULLNAME: 'full_name'
+        SHOW_FULLNAME: 'full_name',
     },
 
     SPECIAL_MENTIONS: [
         'all',
         'channel',
-        'here'
+        'here',
     ],
 
     MAX_USERS_IN_GM: 8,
-    MIN_USERS_IN_GM: 3
+    MIN_USERS_IN_GM: 3,
+
+    DEFAULT_LOCALE: 'en',
 };

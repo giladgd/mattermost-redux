@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {combineReducers} from 'redux';
 import {FileTypes, PostTypes, UserTypes} from 'action_types';
@@ -10,11 +10,11 @@ function files(state = {}, action) {
     case FileTypes.RECEIVED_FILES_FOR_POST: {
         const filesById = action.data.reduce((filesMap, file) => {
             return {...filesMap,
-                [file.id]: file
+                [file.id]: file,
             };
         }, {});
         return {...state,
-            ...filesById
+            ...filesById,
         };
     }
 
@@ -45,7 +45,7 @@ function fileIdsByPostId(state = {}, action) {
         const {data, postId} = action;
         const filesIdsForPost = data.map((file) => file.id);
         return {...state,
-            [postId]: filesIdsForPost
+            [postId]: filesIdsForPost,
         };
     }
 
@@ -82,5 +82,5 @@ function filePublicLink(state = {}, action) {
 export default combineReducers({
     files,
     fileIdsByPostId,
-    filePublicLink
+    filePublicLink,
 });

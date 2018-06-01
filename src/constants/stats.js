@@ -1,10 +1,12 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
 export default keyMirror({
     TOTAL_USERS: null,
+    TOTAL_INACTIVE_USERS: null,
     TOTAL_PUBLIC_CHANNELS: null,
     TOTAL_PRIVATE_GROUPS: null,
     TOTAL_POSTS: null,
@@ -23,6 +25,6 @@ export default keyMirror({
     TOTAL_MASTER_DB_CONNECTIONS: null,
     TOTAL_READ_DB_CONNECTIONS: null,
     DAILY_ACTIVE_USERS: null,
-    MONTHLY_ACTIVE_USERS: null
+    MONTHLY_ACTIVE_USERS: null,
 });
 

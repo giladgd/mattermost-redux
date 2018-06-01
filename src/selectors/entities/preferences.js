@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {createSelector} from 'reselect';
 
@@ -30,6 +30,12 @@ export function getBool(state, category, name, defaultValue = false) {
     const value = get(state, category, name, String(defaultValue));
 
     return value !== 'false';
+}
+
+export function getInt(state, category, name, defaultValue = 0) {
+    const value = get(state, category, name, defaultValue);
+
+    return parseInt(value, 10);
 }
 
 export function makeGetCategory() {
@@ -88,15 +94,12 @@ export const getTeammateNameDisplaySetting = createSelector(
     getConfig,
     getMyPreferences,
     (config, preferences) => {
-        if (config.TeammateNameDisplay) {
-            return config.TeammateNameDisplay;
-        }
-
         const key = getPreferenceKey(Preferences.CATEGORY_DISPLAY_SETTINGS, Preferences.NAME_NAME_FORMAT);
         if (preferences[key]) {
             return preferences[key].value;
+        } else if (config.TeammateNameDisplay) {
+            return config.TeammateNameDisplay;
         }
-
         return General.TEAMMATE_NAME_DISPLAY.SHOW_USERNAME;
     }
 );
@@ -120,14 +123,27 @@ const getThemePreference = createSelector(
     }
 );
 
+const getDefaultTheme = createSelector(getConfig, (config) => {
+    if (config.DefaultTheme) {
+        const theme = Preferences.THEMES[config.DefaultTheme];
+        if (theme) {
+            return theme;
+        }
+    }
+
+    // If no config.DefaultTheme or value doesn't refer to a valid theme name...
+    return Preferences.THEMES.default;
+});
+
 export const getTheme = createShallowSelector(
     getThemePreference,
-    (themePreference) => {
+    getDefaultTheme,
+    (themePreference, defaultTheme) => {
         let theme;
         if (themePreference) {
             theme = themePreference.value;
         } else {
-            theme = Preferences.THEMES.default;
+            theme = defaultTheme;
         }
 
         if (typeof theme === 'string') {
@@ -139,20 +155,25 @@ export const getTheme = createShallowSelector(
 
         // If this is a system theme, find it in case the user's theme is missing any fields
         if (theme.type && theme.type !== 'custom') {
-            const match = Object.entries(Preferences.THEMES).find(([, v]) => v.type === theme.type);
+            const match = Object.values(Preferences.THEMES).find((v) => v.type === theme.type);
             if (match) {
-                return match[1];
+                return match;
             }
         }
 
-        for (const key of Object.keys(Preferences.THEMES.default)) {
+        for (const key of Object.keys(defaultTheme)) {
             if (theme[key]) {
                 // Fix a case where upper case theme colours are rendered as black
                 theme[key] = theme[key].toLowerCase();
             }
         }
 
-        return Object.assign({}, Preferences.THEMES.default, theme);
+        // Backwards compatability with old name
+        if (!theme.mentionBg) {
+            theme.mentionBg = theme.mentionBj;
+        }
+
+        return Object.assign({}, defaultTheme, theme);
     }
 );
 

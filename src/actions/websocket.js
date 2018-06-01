@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 import {batchActions} from 'redux-batched-actions';
 
@@ -15,19 +15,24 @@ import {
     markChannelAsUnread,
     markChannelAsRead,
     selectChannel,
-    markChannelAsViewed
+    markChannelAsViewed,
 } from './channels';
 import {
+    getPost,
     getPosts,
     getPostsSince,
-    getProfilesAndStatusesForPosts
+    getProfilesAndStatusesForPosts,
+    getCustomEmojiForReaction,
 } from './posts';
-
 import {
     getMyPreferences,
     makeDirectChannelVisibleIfNecessary,
-    makeGroupMessageVisibleIfNecessary
+    makeGroupMessageVisibleIfNecessary,
 } from './preferences';
+import {
+    getLicenseConfig,
+    getClientConfig,
+} from './general';
 
 import {getTeam, getTeams, getMyTeams, getMyTeamMembers, getMyTeamUnreads} from './teams';
 
@@ -38,34 +43,39 @@ import {
     PostTypes,
     PreferenceTypes,
     TeamTypes,
-    UserTypes
+    UserTypes,
+    RoleTypes,
+    AdminTypes,
 } from 'action_types';
 import {General, WebsocketEvents, Preferences, Posts} from 'constants';
 
 import {getCurrentChannelStats} from 'selectors/entities/channels';
+import {getCurrentUser} from 'selectors/entities/users';
 import {getUserIdFromChannelName} from 'utils/channel_utils';
 import {isFromWebhook, isSystemMessage, getLastCreateAt, shouldIgnorePost} from 'utils/post_utils';
 import EventEmitter from 'utils/event_emitter';
 
-export function init(platform, siteUrl, token, optionalWebSocket) {
+export function init(platform, siteUrl, token, optionalWebSocket, additionalOptions = {}) {
     return async (dispatch, getState) => {
         const config = getState().entities.general.config;
-        let connUrl = siteUrl || Client4.getUrl();
+        let connUrl = siteUrl || config.WebsocketURL || Client4.getUrl();
         const authToken = token || Client4.getToken();
 
         // replace the protocol with a websocket one
-        if (connUrl.startsWith('https:')) {
-            connUrl = connUrl.replace(/^https:/, 'wss:');
-        } else {
-            connUrl = connUrl.replace(/^http:/, 'ws:');
-        }
-
-        // append a port number if one isn't already specified
-        if (!(/:\d+$/).test(connUrl)) {
-            if (connUrl.startsWith('wss:')) {
-                connUrl += ':' + (config.WebsocketSecurePort || 443);
+        if (platform !== 'ios' && platform !== 'android') {
+            if (connUrl.startsWith('https:')) {
+                connUrl = connUrl.replace(/^https:/, 'wss:');
             } else {
-                connUrl += ':' + (config.WebsocketPort || 80);
+                connUrl = connUrl.replace(/^http:/, 'ws:');
+            }
+
+            // append a port number if one isn't already specified
+            if (!(/:\d+$/).test(connUrl)) {
+                if (connUrl.startsWith('wss:')) {
+                    connUrl += ':' + (config.WebsocketSecurePort || 443);
+                } else {
+                    connUrl += ':' + (config.WebsocketPort || 80);
+                }
             }
         }
 
@@ -78,7 +88,8 @@ export function init(platform, siteUrl, token, optionalWebSocket) {
 
         const websocketOpts = {
             connectionUrl: connUrl,
-            platform
+            platform,
+            ...additionalOptions,
         };
 
         if (optionalWebSocket) {
@@ -119,6 +130,8 @@ async function handleReconnect(dispatch, getState) {
     const {currentChannelId} = entities.channels;
     const {currentUserId} = entities.users;
 
+    getLicenseConfig()(dispatch, getState);
+    getClientConfig()(dispatch, getState);
     getMyPreferences()(dispatch, getState);
 
     if (currentTeamId) {
@@ -139,8 +152,8 @@ async function handleReconnect(dispatch, getState) {
             const newMsg = {
                 data: {
                     user_id: currentUserId,
-                    team_id: currentTeamId
-                }
+                    team_id: currentTeamId,
+                },
             };
             handleLeaveTeamEvent(newMsg, dispatch, getState);
             return dispatch({type: GeneralTypes.WEBSOCKET_SUCCESS}, getState);
@@ -202,6 +215,15 @@ function handleEvent(msg, dispatch, getState) {
     case WebsocketEvents.USER_UPDATED:
         handleUserUpdatedEvent(msg, dispatch, getState);
         break;
+    case WebsocketEvents.ROLE_ADDED:
+        handleRoleAddedEvent(msg, dispatch, getState);
+        break;
+    case WebsocketEvents.ROLE_REMOVED:
+        handleRoleRemovedEvent(msg, dispatch, getState);
+        break;
+    case WebsocketEvents.ROLE_UPDATED:
+        handleRoleUpdatedEvent(msg, dispatch, getState);
+        break;
     case WebsocketEvents.CHANNEL_CREATED:
         handleChannelCreatedEvent(msg, dispatch, getState);
         break;
@@ -213,6 +235,9 @@ function handleEvent(msg, dispatch, getState) {
         break;
     case WebsocketEvents.CHANNEL_VIEWED:
         handleChannelViewedEvent(msg, dispatch, getState);
+        break;
+    case WebsocketEvents.CHANNEL_MEMBER_UPDATED:
+        handleChannelMemberUpdatedEvent(msg, dispatch);
         break;
     case WebsocketEvents.DIRECT_ADDED:
         handleDirectAddedEvent(msg, dispatch, getState);
@@ -244,6 +269,15 @@ function handleEvent(msg, dispatch, getState) {
     case WebsocketEvents.EMOJI_ADDED:
         handleAddEmoji(msg, dispatch, getState);
         break;
+    case WebsocketEvents.LICENSE_CHANGED:
+        handleLicenseChangedEvent(msg, dispatch, getState);
+        break;
+    case WebsocketEvents.CONFIG_CHANGED:
+        handleConfigChangedEvent(msg, dispatch, getState);
+        break;
+    case WebsocketEvents.PLUGIN_STATUSES_CHANGED:
+        handlePluginStatusesChangedEvent(msg, dispatch, getState);
+        break;
     }
 }
 
@@ -257,16 +291,12 @@ async function handleNewPostEvent(msg, dispatch, getState) {
     const currentUserId = users.currentUserId;
     const status = users.statuses[userId];
 
-    // Only fetch the profile and status if the post was made by someone else
-    // as well as making the DM channel visible
-    if (userId !== currentUserId) {
-        getProfilesAndStatusesForPosts([post], dispatch, getState);
+    getProfilesAndStatusesForPosts([post], dispatch, getState);
 
-        // getProfilesAndStatusesForPosts only gets the status if it doesn't exist, but we also want it if
-        // the user does not appear to be online
-        if (status && status !== General.ONLINE) {
-            getStatusesByIds([userId])(dispatch, getState);
-        }
+    // getProfilesAndStatusesForPosts only gets the status if it doesn't exist, but we
+    // also want it if the user does not appear to be online
+    if (userId !== currentUserId && status && status !== General.ONLINE) {
+        getStatusesByIds([userId])(dispatch, getState);
     }
 
     switch (post.type) {
@@ -293,7 +323,7 @@ async function handleNewPostEvent(msg, dispatch, getState) {
             dispatch({
                 type: PostTypes.RECEIVED_POSTS,
                 data,
-                channelId: post.channel_id
+                channelId: post.channel_id,
             }, getState);
         });
     }
@@ -302,8 +332,8 @@ async function handleNewPostEvent(msg, dispatch, getState) {
         type: WebsocketEvents.STOP_TYPING,
         data: {
             id: post.channel_id + post.root_id,
-            userId: post.user_id
-        }
+            userId: post.user_id,
+        },
     }];
 
     if (!posts[post.id]) {
@@ -319,10 +349,10 @@ async function handleNewPostEvent(msg, dispatch, getState) {
             data: {
                 order: [],
                 posts: {
-                    [post.id]: post
-                }
+                    [post.id]: post,
+                },
             },
-            channelId: post.channel_id
+            channelId: post.channel_id,
         });
     }
 
@@ -334,16 +364,19 @@ async function handleNewPostEvent(msg, dispatch, getState) {
     }
 
     let markAsRead = false;
+    let markAsReadOnServer = false;
     if (userId === currentUserId && !isSystemMessage(post) && !isFromWebhook(post)) {
         // In case the current user posted the message and that message wasn't triggered by a system message
         markAsRead = true;
+        markAsReadOnServer = false;
     } else if (post.channel_id === currentChannelId) {
         // if the post is for the channel that the user is currently viewing we'll mark the channel as read
         markAsRead = true;
+        markAsReadOnServer = true;
     }
 
     if (markAsRead) {
-        markChannelAsRead(post.channel_id, null, false)(dispatch, getState);
+        markChannelAsRead(post.channel_id, null, markAsReadOnServer)(dispatch, getState);
         markChannelAsViewed(post.channel_id)(dispatch, getState);
     } else {
         markChannelAsUnread(msg.data.team_id, post.channel_id, msg.data.mentions)(dispatch, getState);
@@ -352,6 +385,8 @@ async function handleNewPostEvent(msg, dispatch, getState) {
 
 function handlePostEdited(msg, dispatch, getState) {
     const data = JSON.parse(msg.data.post);
+
+    getProfilesAndStatusesForPosts([data], dispatch, getState);
 
     dispatch({type: PostTypes.RECEIVED_POST, data}, getState);
 }
@@ -381,8 +416,10 @@ function handleUpdateTeamEvent(msg, dispatch, getState) {
 }
 
 async function handleTeamAddedEvent(msg, dispatch, getState) {
-    await getTeam(msg.data.team_id)(dispatch, getState);
-    await getMyTeamUnreads()(dispatch, getState);
+    await Promise.all([
+        getTeam(msg.data.team_id)(dispatch, getState),
+        getMyTeamUnreads()(dispatch, getState),
+    ]);
 }
 
 function handleUserAddedEvent(msg, dispatch, getState) {
@@ -416,8 +453,8 @@ function handleUserRemovedEvent(msg, dispatch, getState) {
                 id: msg.data.channel_id,
                 user_id: currentUserId,
                 team_id: channel.team_id,
-                type: channel.type
-            }
+                type: channel.type,
+            },
         }, getState);
 
         if (msg.data.channel_id === currentChannelId) {
@@ -433,18 +470,52 @@ function handleUserRemovedEvent(msg, dispatch, getState) {
 }
 
 function handleUserUpdatedEvent(msg, dispatch, getState) {
-    const entities = getState().entities;
-    const {currentUserId} = entities.users;
+    const currentUser = getCurrentUser(getState());
     const user = msg.data.user;
 
-    if (user.id !== currentUserId) {
+    if (user.id === currentUser.id) {
+        dispatch({
+            type: UserTypes.RECEIVED_ME,
+            data: {
+                ...currentUser,
+                last_picture_update: user.last_picture_update,
+            },
+        });
+    } else {
         dispatch({
             type: UserTypes.RECEIVED_PROFILES,
             data: {
-                [user.id]: user
-            }
+                [user.id]: user,
+            },
         }, getState);
     }
+}
+
+function handleRoleAddedEvent(msg, dispatch) {
+    const role = JSON.parse(msg.data.role);
+
+    dispatch({
+        type: RoleTypes.RECEIVED_ROLE,
+        data: role,
+    });
+}
+
+function handleRoleRemovedEvent(msg, dispatch) {
+    const role = JSON.parse(msg.data.role);
+
+    dispatch({
+        type: RoleTypes.ROLE_DELETED,
+        data: role,
+    });
+}
+
+function handleRoleUpdatedEvent(msg, dispatch) {
+    const role = JSON.parse(msg.data.role);
+
+    dispatch({
+        type: RoleTypes.RECEIVED_ROLE,
+        data: role,
+    });
 }
 
 function handleChannelCreatedEvent(msg, dispatch, getState) {
@@ -495,7 +566,7 @@ function handleChannelUpdatedEvent(msg, dispatch, getState) {
     if (channel) {
         dispatch({
             type: ChannelTypes.RECEIVED_CHANNEL,
-            data: channel
+            data: channel,
         });
 
         if (currentChannelId === channel.id) {
@@ -516,6 +587,11 @@ function handleChannelViewedEvent(msg, dispatch, getState) {
     }
 }
 
+function handleChannelMemberUpdatedEvent(msg, dispatch) {
+    const channelMember = JSON.parse(msg.data.channelMember);
+    dispatch({type: ChannelTypes.RECEIVED_MY_CHANNEL_MEMBER, data: channelMember});
+}
+
 function handleDirectAddedEvent(msg, dispatch, getState) {
     getChannelAndMyMember(msg.broadcast.channel_id)(dispatch, getState);
 }
@@ -529,9 +605,20 @@ function handlePreferenceChangedEvent(msg, dispatch, getState) {
 
 function handlePreferencesChangedEvent(msg, dispatch, getState) {
     const preferences = JSON.parse(msg.data.preferences);
-    dispatch({type: PreferenceTypes.RECEIVED_PREFERENCES, data: preferences}, getState);
 
+    getAddedPostsIfNecessary(preferences, dispatch, getState);
     getAddedDmUsersIfNecessary(preferences, dispatch, getState);
+    dispatch({type: PreferenceTypes.RECEIVED_PREFERENCES, data: preferences});
+}
+
+function getAddedPostsIfNecessary(preferences, dispatch, getState) {
+    const state = getState();
+    const {posts} = state.entities.posts;
+    preferences.forEach((pref) => {
+        if (pref.category === Preferences.CATEGORY_FLAGGED_POST && !posts[pref.name]) {
+            dispatch(getPost(pref.name));
+        }
+    });
 }
 
 function getAddedDmUsersIfNecessary(preferences, dispatch, getState) {
@@ -580,7 +667,7 @@ function handlePreferencesDeletedEvent(msg, dispatch, getState) {
 function handleStatusChangedEvent(msg, dispatch, getState) {
     dispatch({
         type: UserTypes.RECEIVED_STATUSES,
-        data: [{user_id: msg.data.user_id, status: msg.data.status}]
+        data: [{user_id: msg.data.user_id, status: msg.data.status}],
     }, getState);
 }
 
@@ -588,7 +675,7 @@ function handleHelloEvent(msg) {
     const serverVersion = msg.data.server_version;
     if (serverVersion && Client4.serverVersion !== serverVersion) {
         Client4.serverVersion = serverVersion;
-        EventEmitter.emit(General.CONFIG_CHANGED, serverVersion);
+        EventEmitter.emit(General.SERVER_VERSION_CHANGED, serverVersion);
     }
 }
 
@@ -601,18 +688,18 @@ function handleUserTypingEvent(msg, dispatch, getState) {
     const data = {
         id: msg.broadcast.channel_id + msg.data.parent_id,
         userId,
-        now: Date.now()
+        now: Date.now(),
     };
 
     dispatch({
         type: WebsocketEvents.TYPING,
-        data
+        data,
     }, getState);
 
     setTimeout(() => {
         dispatch({
             type: WebsocketEvents.STOP_TYPING,
-            data
+            data,
         }, getState);
     }, parseInt(config.TimeBetweenUserTypingUpdatesMilliseconds, 10));
 
@@ -630,9 +717,11 @@ function handleReactionAddedEvent(msg, dispatch, getState) {
     const {data} = msg;
     const reaction = JSON.parse(data.reaction);
 
+    dispatch(getCustomEmojiForReaction(reaction.emoji_name));
+
     dispatch({
         type: PostTypes.RECEIVED_REACTION,
-        data: reaction
+        data: reaction,
     }, getState);
 }
 
@@ -642,7 +731,7 @@ function handleReactionRemovedEvent(msg, dispatch, getState) {
 
     dispatch({
         type: PostTypes.REACTION_DELETED,
-        data: reaction
+        data: reaction,
     }, getState);
 }
 
@@ -651,7 +740,35 @@ function handleAddEmoji(msg, dispatch) {
 
     dispatch({
         type: EmojiTypes.RECEIVED_CUSTOM_EMOJI,
-        data
+        data,
+    });
+}
+
+function handleLicenseChangedEvent(msg, dispatch) {
+    const data = msg.data.license;
+
+    dispatch({
+        type: GeneralTypes.CLIENT_LICENSE_RECEIVED,
+        data,
+    });
+}
+
+function handleConfigChangedEvent(msg, dispatch) {
+    const data = msg.data.config;
+
+    dispatch({
+        type: GeneralTypes.CLIENT_CONFIG_RECEIVED,
+        data,
+    });
+    EventEmitter.emit(General.CONFIG_CHANGED, data);
+}
+
+function handlePluginStatusesChangedEvent(msg, dispatch) {
+    const data = msg.data;
+
+    dispatch({
+        type: AdminTypes.RECEIVED_PLUGIN_STATUSES,
+        data: data.plugin_statuses,
     });
 }
 

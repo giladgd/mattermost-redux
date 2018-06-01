@@ -1,5 +1,6 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
+// @flow
 
 import keyMirror from 'utils/key_mirror';
 
@@ -19,5 +20,5 @@ export default keyMirror({
 
     RECEIVED_FILES_FOR_POST: null,
     RECEIVED_UPLOAD_FILES: null,
-    RECEIVED_FILE_PUBLIC_LINK: null
+    RECEIVED_FILE_PUBLIC_LINK: null,
 });
